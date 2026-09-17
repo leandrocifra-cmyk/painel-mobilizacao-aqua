@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import requests
-import plotly.express as px
 from datetime import date, datetime, timedelta
 
 # ============================================================
@@ -15,185 +14,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# === BLACK PIANO V0 ===
-st.markdown("""
-<style>
-
-/* =========================================================
-   BLACK PIANO — ENORSUL
-   Fundo preto | Cards grafite | Texto branco | Destaque vermelho
-   ========================================================= */
-
-/* CANVAS PRINCIPAL */
-html, body,
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-.stApp,
-.main {
-    background: #050506 !important;
-    color: #F5F5F7 !important;
-}
-
-[data-testid="stMainBlockContainer"],
-.block-container {
-    background: #050506 !important;
-}
-
-/* HEADER */
-[data-testid="stHeader"] {
-    background: rgba(5,5,6,0.96) !important;
-}
-
-/* SIDEBAR */
-[data-testid="stSidebar"],
-[data-testid="stSidebarContent"] {
-    background: #09090B !important;
-    border-right: 1px solid #242429 !important;
-}
-
-/* TEXTO */
-h1, h2, h3, h4, h5, h6,
-p, span, label,
-[data-testid="stMarkdownContainer"],
-[data-testid="stCaptionContainer"] {
-    color: #F5F5F7;
-}
-
-/* MÉTRICAS */
-[data-testid="stMetric"] {
-    background: #101014 !important;
-    border: 1px solid #26262C !important;
-    border-radius: 14px !important;
-    padding: 16px 18px !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,.28) !important;
-}
-
-[data-testid="stMetricLabel"] * {
-    color: #A8A8B0 !important;
-}
-
-[data-testid="stMetricValue"] {
-    color: #FFFFFF !important;
-}
-
-[data-testid="stMetricDelta"] * {
-    color: #D7D7DC !important;
-}
-
-/* CONTAINERS / CARDS */
-[data-testid="stVerticalBlockBorderWrapper"] {
-    background: #0D0D10 !important;
-    border: 1px solid #242429 !important;
-    border-radius: 14px !important;
-}
-
-/* TABS */
-[data-testid="stTabs"] {
-    background: transparent !important;
-}
-
-button[data-baseweb="tab"] {
-    color: #B9B9C0 !important;
-}
-
-button[data-baseweb="tab"][aria-selected="true"] {
-    color: #FFFFFF !important;
-    border-bottom-color: #E31B2D !important;
-}
-
-/* INPUTS */
-[data-baseweb="input"] > div,
-[data-baseweb="select"] > div,
-[data-baseweb="textarea"] {
-    background: #111115 !important;
-    color: #FFFFFF !important;
-    border-color: #303036 !important;
-}
-
-input, textarea {
-    color: #FFFFFF !important;
-    background: #111115 !important;
-}
-
-/* BOTÕES */
-.stButton > button,
-.stFormSubmitButton > button {
-    background: #17171C !important;
-    color: #FFFFFF !important;
-    border: 1px solid #35353C !important;
-    border-radius: 9px !important;
-}
-
-.stButton > button:hover,
-.stFormSubmitButton > button:hover {
-    border-color: #E31B2D !important;
-    color: #FFFFFF !important;
-}
-
-/* BOTÃO PRIMÁRIO */
-button[kind="primary"] {
-    background: #E31B2D !important;
-    border-color: #E31B2D !important;
-    color: #FFFFFF !important;
-}
-
-/* DATAFRAMES / TABELAS */
-[data-testid="stDataFrame"],
-[data-testid="stTable"] {
-    background: #0D0D10 !important;
-    border-radius: 12px !important;
-}
-
-/* EXPANDERS */
-[data-testid="stExpander"] {
-    background: #0D0D10 !important;
-    border: 1px solid #242429 !important;
-    border-radius: 12px !important;
-}
-
-/* ALERTAS */
-[data-testid="stAlert"] {
-    border-radius: 10px !important;
-}
-
-/* DIVISORES */
-hr {
-    border-color: #25252A !important;
-}
-
-/* LINKS */
-a {
-    color: #F05A67 !important;
-}
-
-/* REMOVE FUNDOS CLAROS DE ELEMENTOS EMBUTIDOS */
-iframe {
-    background: transparent !important;
-}
-
-/* SCROLLBAR */
-::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-}
-
-::-webkit-scrollbar-track {
-    background: #050506;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #303036;
-    border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #E31B2D;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
 API_URL = "https://aqua-mobilizacao-api.leandro-cifra.workers.dev"
 GO_LIVE = date(2026, 10, 26)
 
@@ -204,6 +24,14 @@ STATUS_VALIDOS = [
     "Concluído",
     "Cancelado",
 ]
+
+STATUS_CORES = {
+    "Não iniciado": "#667085",
+    "Aguardando Aqua": "#2F80ED",
+    "Concluído": "#39FF88",
+    "Em andamento": "#FFB020",
+    "Cancelado": "#475467",
+}
 
 ORDEM_PRIORIDADE = {
     "Crítica": 1,
@@ -219,6 +47,55 @@ ORDEM_PRIORIDADE = {
 st.markdown(
     """
     <style>
+
+        .stApp {
+            background: #07090D;
+            color: #F5F7FA;
+        }
+
+        [data-testid="stSidebar"] {
+            background: #0B0E14;
+        }
+
+        [data-testid="stMetric"] {
+            background: rgba(255,255,255,0.045) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,.18);
+        }
+
+        .card {
+            background: rgba(255,255,255,0.045) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,.16);
+        }
+
+        .macro-card {
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 15px 16px 13px 16px;
+            min-height: 138px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.16);
+        }
+        .macro-label { color:#AAB2C0; font-size:.80rem; font-weight:650; }
+        .macro-value { color:#F8FAFC; font-size:1.65rem; font-weight:800; margin:2px 0 8px 0; }
+        .macro-sub { color:#98A2B3; font-size:.76rem; margin-top:7px; }
+        .progress-track { height:8px; background:#20242D; border-radius:999px; overflow:hidden; }
+        .progress-fill { height:100%; border-radius:999px; box-shadow:0 0 12px rgba(57,255,136,.22); }
+        .status-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; box-shadow:0 0 10px currentColor; }
+        .alerta-atraso {
+            display:inline-flex; align-items:center; gap:6px;
+            color:#FF4D6D; font-weight:750; font-size:.76rem;
+            text-shadow:0 0 10px rgba(255,77,109,.45);
+        }
+        .section-shell {
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 18px;
+            padding: 12px 14px 4px 14px;
+            margin: 8px 0 14px 0;
+        }
+
         .block-container {
             padding-top: 1.4rem;
             padding-bottom: 3rem;
@@ -332,22 +209,6 @@ def carregar_api(rota):
     resposta = requests.get(f"{API_URL}/{rota}", timeout=20)
     resposta.raise_for_status()
     return resposta.json()
-
-
-def salvar_api(rota, payload):
-    resposta = requests.put(f"{API_URL}/{rota}", json=payload, timeout=30)
-    if not resposta.ok:
-        try:
-            detalhe = resposta.json()
-        except Exception:
-            detalhe = resposta.text
-        raise RuntimeError(f"Erro {resposta.status_code}: {detalhe}")
-    return resposta.json()
-
-
-def limpar_recarregar():
-    st.cache_data.clear()
-    st.rerun()
 
 
 def carregar_dados():
@@ -654,6 +515,112 @@ def tabela_atividades(df):
     )
 
 
+def percentual_seguro(parte, total):
+    total = numero(total)
+    parte = numero(parte)
+    if total <= 0:
+        return 0.0
+    return max(0.0, min(100.0, parte / total * 100))
+
+
+def recursos_por_categoria(termos):
+    if df_recursos.empty:
+        return 0, 0
+    base = df_recursos.copy()
+    for campo in ["categoria", "descricao"]:
+        if campo not in base.columns:
+            base[campo] = ""
+    texto_busca = (base["categoria"].fillna("").astype(str) + " " + base["descricao"].fillna("").astype(str)).str.lower()
+    mascara = False
+    for termo in termos:
+        mascara = mascara | texto_busca.str.contains(termo.lower(), regex=False)
+    base = base[mascara].copy()
+    if base.empty:
+        return 0, 0
+    planejado = pd.to_numeric(base.get("quantidade_planejada", 0), errors="coerce").fillna(0).sum()
+    disponivel = pd.to_numeric(base.get("quantidade_disponivel", 0), errors="coerce").fillna(0).sum()
+    return int(planejado), int(disponivel)
+
+
+def indicadores_mobilizacao_macro():
+    total_pessoas = len(df_pessoas)
+    aprovados = 0
+    docs = 0
+    if not df_pessoas.empty:
+        if "aprovado_aqua" in df_pessoas.columns:
+            aprovados = int(pd.to_numeric(df_pessoas["aprovado_aqua"], errors="coerce").fillna(0).sum())
+        if "documentacao_enviada" in df_pessoas.columns:
+            docs = int(pd.to_numeric(df_pessoas["documentacao_enviada"], errors="coerce").fillna(0).sum())
+    frota_plan, frota_disp = recursos_por_categoria(["frota", "veículo", "veiculo", "carro", "moto"])
+    epi_plan, epi_disp = recursos_por_categoria(["epi", "fardamento", "uniforme", "bota", "camisa", "calça", "calca"])
+    return [
+        ("Contratação de pessoal", percentual_seguro(aprovados, total_pessoas), f"{aprovados} aprovados de {total_pessoas}"),
+        ("Frota", percentual_seguro(frota_disp, frota_plan), f"{frota_disp} disponíveis de {frota_plan}"),
+        ("Documentação", percentual_seguro(docs, total_pessoas), f"{docs} completos de {total_pessoas}"),
+        ("Fardamento & EPI", percentual_seguro(epi_disp, epi_plan), f"{epi_disp} disponíveis de {epi_plan}"),
+    ]
+
+
+def card_macro(titulo, pct, detalhe):
+    if pct >= 100:
+        cor = STATUS_CORES["Concluído"]
+    elif pct > 0:
+        cor = STATUS_CORES["Em andamento"]
+    else:
+        cor = STATUS_CORES["Não iniciado"]
+    st.markdown(
+        f"""<div class='macro-card'>
+        <div class='macro-label'>{titulo}</div>
+        <div class='macro-value'>{pct:.0f}%</div>
+        <div class='progress-track'><div class='progress-fill' style='width:{pct:.1f}%;background:{cor};'></div></div>
+        <div class='macro-sub'>{detalhe}</div>
+        </div>""", unsafe_allow_html=True
+    )
+
+
+def salvar_atividade_api(atividade_id, payload):
+    erros = []
+    for metodo in ("patch", "put"):
+        try:
+            fn = getattr(requests, metodo)
+            r = fn(f"{API_URL}/atividades/{atividade_id}", json=payload, timeout=20)
+            if r.ok:
+                st.cache_data.clear()
+                return True, None
+            erros.append(f"{metodo.upper()}: HTTP {r.status_code}")
+        except Exception as exc:
+            erros.append(f"{metodo.upper()}: {exc}")
+    return False, " | ".join(erros)
+
+
+def editor_atividade(base, chave):
+    if base.empty or "id" not in base.columns:
+        return
+    st.markdown("### Atualização rápida")
+    opcoes = base.dropna(subset=["id"]).copy()
+    if opcoes.empty:
+        st.caption("Nenhuma atividade com ID disponível para edição.")
+        return
+    rotulos = {str(r["id"]): f"{texto(r.get('macroetapa'),'')} · {texto(r.get('atividade'))}" for _, r in opcoes.iterrows()}
+    atividade_id = st.selectbox("Atividade para editar", list(rotulos.keys()), format_func=lambda x: rotulos[x], key=f"edit_id_{chave}")
+    row = opcoes[opcoes["id"].astype(str) == str(atividade_id)].iloc[0]
+    c1, c2, c3 = st.columns([1.1, .7, 1.2])
+    status_atual = texto(row.get("status"), "Não iniciado")
+    idx = STATUS_VALIDOS.index(status_atual) if status_atual in STATUS_VALIDOS else 0
+    novo_status = c1.selectbox("Status", STATUS_VALIDOS, index=idx, key=f"edit_status_{chave}")
+    novo_pct = c2.number_input("%", min_value=0, max_value=100, value=numero(row.get("percentual")), step=5, key=f"edit_pct_{chave}")
+    novo_resp = c3.text_input("Responsável", value=texto(row.get("responsavel"), ""), key=f"edit_resp_{chave}")
+    novo_passo = st.text_area("Próximo passo / pendência", value=texto(row.get("pendencia_acao"), ""), height=80, key=f"edit_passo_{chave}")
+    if st.button("Salvar alteração", type="primary", key=f"save_{chave}"):
+        payload = {"status": novo_status, "percentual": int(novo_pct), "responsavel": novo_resp, "pendencia_acao": novo_passo}
+        ok, erro = salvar_atividade_api(atividade_id, payload)
+        if ok:
+            st.success("Alteração salva na base.")
+            st.rerun()
+        else:
+            st.error("A tela de edição está pronta, mas a API ainda não aceitou gravação. É necessário habilitar PATCH/PUT no Worker. " + (erro or ""))
+
+
 def cabecalho(titulo, subtitulo=None):
     st.markdown(
         f"<h1 class='titulo-pagina'>{titulo}</h1>",
@@ -696,101 +663,140 @@ def indicadores_frente(nome_frente):
     c5.metric("Não iniciados", nao_iniciado)
 
 
-def grafico_macroetapas(base, chave):
-    if base.empty or "macroetapa" not in base.columns:
-        st.info("Sem dados de macroetapa.")
-        return
-    b = base[~base["status"].isin(["Cancelado"])].copy()
-    b["macroetapa"] = b["macroetapa"].fillna("Sem macroetapa")
-    macros = sorted(b["macroetapa"].astype(str).unique().tolist())
-    if not macros:
-        return
-    for i in range(0, len(macros), 2):
-        cols = st.columns(2)
-        for j, macro in enumerate(macros[i:i+2]):
-            d = b[b["macroetapa"].astype(str) == macro]
-            cont = d["status"].value_counts().reindex(STATUS_VALIDOS[:-1], fill_value=0).reset_index()
-            cont.columns = ["Status", "Quantidade"]
-            cont = cont[cont["Quantidade"] > 0]
-            with cols[j]:
-                st.markdown(f"**{macro}**")
-                fig = px.pie(cont, names="Status", values="Quantidade", hole=.62)
-                fig.update_layout(height=290, margin=dict(l=5,r=5,t=10,b=5), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#F5F5F7", legend_title_text="")
-                fig.update_traces(textposition="inside", textinfo="value")
-                st.plotly_chart(fig, use_container_width=True, key=f"macro_{chave}_{i}_{j}")
-                abertos = int((~d["status"].isin(["Concluído","Cancelado"])).sum())
-                st.caption(f"{len(d)} atividades · {abertos} em aberto")
-
-
-def editor_atividade(base, nome_frente):
-    if base.empty:
-        st.info("Nenhuma atividade disponível para atualização.")
-        return
-    opcoes = {}
-    for _, r in base.sort_values(["macroetapa","id"], na_position="last").iterrows():
-        label = f"{numero(r.get('id'))} — {texto(r.get('macroetapa'))} — {texto(r.get('atividade'))}"
-        opcoes[label] = r
-    escolha = st.selectbox("Atividade", list(opcoes), key=f"edit_atividade_{nome_frente}")
-    r = opcoes[escolha]
-    status_atual = texto(r.get("status"), "Não iniciado")
-    prioridade_atual = texto(r.get("prioridade"), "Média")
-    prioridades = ["Crítica","Alta","Média","Baixa"]
-    if prioridade_atual not in prioridades: prioridade_atual="Média"
-    with st.form(f"form_atividade_{nome_frente}_{numero(r.get('id'))}"):
-        c1,c2,c3=st.columns(3)
-        status=c1.selectbox("Status", STATUS_VALIDOS, index=STATUS_VALIDOS.index(status_atual) if status_atual in STATUS_VALIDOS else 0)
-        prioridade=c2.selectbox("Prioridade", prioridades, index=prioridades.index(prioridade_atual))
-        percentual=c3.number_input("Percentual",0,100,numero(r.get("percentual")),1)
-        responsavel=st.text_input("Responsável", value=texto(r.get("responsavel"),""))
-        d1,d2,d3=st.columns(3)
-        inicio=d1.date_input("Data de início", value=converter_data(r.get("data_inicio")))
-        prevista=d2.date_input("Data prevista", value=converter_data(r.get("data_prevista")))
-        conclusao=d3.date_input("Data de conclusão", value=converter_data(r.get("data_conclusao")))
-        dependencia=st.text_area("Dependência", value=texto(r.get("dependencia"),""))
-        pendencia=st.text_area("Pendência / Ação", value=texto(r.get("pendencia_acao"),""))
-        proximo=st.text_area("Próximo passo manual", value=texto(r.get("proximo_passo_manual"),""))
-        criterio=st.text_area("Critério de aceite", value=texto(r.get("criterio_aceite"),""))
-        evidencia=st.text_area("Evidência", value=texto(r.get("evidencia"),""))
-        observacao=st.text_area("Observação", value=texto(r.get("observacao"),""))
-        salvar=st.form_submit_button("Salvar alterações", use_container_width=True)
-    if salvar:
-        payload={"status":status,"prioridade":prioridade,"percentual":int(percentual),"responsavel":responsavel or None,"data_inicio":inicio.isoformat() if inicio else None,"data_prevista":prevista.isoformat() if prevista else None,"data_conclusao":conclusao.isoformat() if conclusao else None,"dependencia":dependencia or None,"pendencia_acao":pendencia or None,"proximo_passo_manual":proximo or None,"criterio_aceite":criterio or None,"evidencia":evidencia or None,"observacao":observacao or None,"atualizado_por":"Painel Mobilização"}
-        try:
-            salvar_api(f"atividades/{numero(r.get('id'))}",payload)
-            st.success("Atividade atualizada no D1 e registrada no histórico.")
-            limpar_recarregar()
-        except Exception as e: st.error(f"Não foi possível salvar: {e}")
-
 def pagina_frente(nome_frente):
-    cabecalho(nome_frente, f"Acompanhamento da mobilização da frente de {nome_frente.lower()}.")
+    cabecalho(
+        nome_frente,
+        f"Acompanhamento da mobilização da frente de {nome_frente.lower()}.",
+    )
+
     indicadores_frente(nome_frente)
+
     if df_atividades.empty:
-        st.info("Não há atividades disponíveis."); return
-    base=df_atividades[df_atividades["frente"]==nome_frente].copy()
-    tab_visao,tab_ativ,tab_atualizar=st.tabs(["Visão da frente","Atividades","Atualizar"])
-    with tab_visao:
-        st.markdown("## Pontos de atenção")
-        criticos=pontos_criticos(base,6)
-        if criticos.empty: st.success("Nenhum ponto crítico identificado nesta frente.")
-        else:
-            for _,row in criticos.iterrows():
-                st.markdown(f"**{texto(row.get('atividade'))}** · {texto(row.get('status'))} · {texto(row.get('prioridade'))}  \nResponsável: {texto(row.get('responsavel'))} · Prazo: {data_br(row.get('data_prevista'))}")
-        st.markdown("## Análise por macroetapa")
-        grafico_macroetapas(base,f"frente_{nome_frente}")
-    with tab_ativ:
-        macroetapas=sorted([x for x in base["macroetapa"].dropna().unique().tolist() if str(x).strip()])
-        f1,f2,f3=st.columns(3)
-        macro=f1.selectbox("Macroetapa",["Todas"]+macroetapas,key=f"macro_filtro_{nome_frente}")
-        status=f2.selectbox("Status",["Todos"]+STATUS_VALIDOS,key=f"status_filtro_{nome_frente}")
-        prioridade=f3.selectbox("Prioridade",["Todas","Crítica","Alta","Média","Baixa"],key=f"prior_filtro_{nome_frente}")
-        filtrado=base.copy()
-        if macro!="Todas": filtrado=filtrado[filtrado["macroetapa"]==macro]
-        if status!="Todos": filtrado=filtrado[filtrado["status"]==status]
-        if prioridade!="Todas": filtrado=filtrado[filtrado["prioridade"]==prioridade]
-        tabela_atividades(filtrado)
-    with tab_atualizar:
-        st.caption("As alterações são gravadas no D1 pelo Worker e registradas no histórico.")
-        editor_atividade(base,nome_frente)
+        st.info("Não há atividades disponíveis.")
+        return
+
+    base = df_atividades[
+        df_atividades["frente"] == nome_frente
+    ].copy()
+
+    st.markdown("## Pontos de atenção")
+
+    criticos = pontos_criticos(base, 6)
+
+    if criticos.empty:
+        st.success("Nenhum ponto crítico identificado nesta frente.")
+    else:
+        for _, row in criticos.iterrows():
+            prazo = data_br(row.get("data_prevista"))
+
+            marcadores = []
+
+            if bool(row.get("atrasada")):
+                marcadores.append("ATRASADA")
+
+            if row.get("status") == "Aguardando Aqua":
+                marcadores.append("AGUARDANDO AQUA")
+
+            if bool(row.get("prazo_proximo")):
+                marcadores.append("PRAZO PRÓXIMO")
+
+            if texto(row.get("prioridade"), ""):
+                marcadores.append(texto(row.get("prioridade")))
+
+            tags = " ".join(
+                [f"<span class='tag' style='color:{STATUS_CORES.get('Em andamento','#FFB020') if x != 'ATRASADA' else '#FF4D6D'}'>{'● ' if x == 'ATRASADA' else ''}{x}</span>" for x in marcadores]
+            )
+
+            st.markdown(
+                f"""
+                <div class="card">
+                    <div class="card-titulo">
+                        {texto(row.get("atividade"))}
+                    </div>
+                    <div>{tags}</div>
+                    <div class="card-texto">
+                        <b>Responsável:</b> {texto(row.get("responsavel"))}
+                        &nbsp;&nbsp;|&nbsp;&nbsp;
+                        <b>Prazo:</b> {prazo}<br>
+                        <b>Próximo passo:</b> {proximo_passo(row)}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("## Atividades")
+
+    macroetapas = sorted(
+        [
+            x
+            for x in base["macroetapa"].dropna().unique().tolist()
+            if str(x).strip()
+        ]
+    )
+
+    f1, f2, f3 = st.columns([1.4, 1.2, 1.2])
+
+    macro = f1.selectbox(
+        "Macroetapa",
+        ["Todas"] + macroetapas,
+        key=f"macro_{nome_frente}",
+    )
+
+    status = f2.selectbox(
+        "Status",
+        ["Todos"] + STATUS_VALIDOS,
+        key=f"status_{nome_frente}",
+    )
+
+    prioridade = f3.selectbox(
+        "Prioridade",
+        ["Todas", "Crítica", "Alta", "Média", "Baixa"],
+        key=f"prioridade_{nome_frente}",
+    )
+
+    filtrado = base.copy()
+
+    if macro != "Todas":
+        filtrado = filtrado[filtrado["macroetapa"] == macro]
+
+    if status != "Todos":
+        filtrado = filtrado[filtrado["status"] == status]
+
+    if prioridade != "Todas":
+        filtrado = filtrado[filtrado["prioridade"] == prioridade]
+
+    tabela_atividades(filtrado)
+
+    with st.expander("✏️ Editar atividade diretamente no painel", expanded=False):
+        editor_atividade(base, nome_frente)
+
+    st.markdown("## Critério de aceite e evidências")
+
+    detalhes = base[
+        [
+            "atividade",
+            "criterio_aceite",
+            "evidencia",
+            "observacao",
+        ]
+    ].copy()
+
+    detalhes = detalhes.rename(
+        columns={
+            "atividade": "Atividade",
+            "criterio_aceite": "Critério de aceite",
+            "evidencia": "Evidência",
+            "observacao": "Observação",
+        }
+    )
+
+    st.dataframe(
+        detalhes,
+        use_container_width=True,
+        hide_index=True,
+        height=330,
+    )
 
 
 # ============================================================
@@ -847,12 +853,12 @@ if pagina == "Visão Geral":
     c5.metric("Aguardando Aqua", totais["aguardando_aqua"])
     c6.metric("Não iniciados", totais["nao_iniciados"])
 
-    st.markdown("## Análise por macroetapa")
-    filtro_macro = st.selectbox("Visão", ["Geral", "Leitura", "Cobrança", "Hidrometria"], key="macro_geral_filtro")
-    base_macro = df_atividades.copy()
-    if filtro_macro != "Geral" and not base_macro.empty:
-        base_macro = base_macro[base_macro["frente"] == filtro_macro]
-    grafico_macroetapas(base_macro, f"geral_{filtro_macro}")
+    st.markdown("## Mobilização operacional")
+    m1, m2, m3, m4 = st.columns(4)
+    macros = indicadores_mobilizacao_macro()
+    for coluna, item in zip([m1, m2, m3, m4], macros):
+        with coluna:
+            card_macro(*item)
 
     st.markdown("## Mobilização por frente")
 
@@ -1032,34 +1038,15 @@ elif pagina == "Pessoas & Estrutura":
     c4.metric("Integrados", integrados)
     c5.metric("Liberados para campo", campo)
 
-    st.markdown("## Funil de mobilização")
+    st.markdown("## Indicadores macro de mobilização")
+    g1, g2, g3, g4 = st.columns(4)
+    macros = indicadores_mobilizacao_macro()
+    for coluna, item in zip([g1, g2, g3, g4], macros):
+        with coluna:
+            card_macro(*item)
 
-    funil = pd.DataFrame(
-        {
-            "Etapa": [
-                "Pessoas cadastradas",
-                "Documentação enviada",
-                "Aprovados Aqua",
-                "Integrados",
-                "Liberados para campo",
-            ],
-            "Quantidade": [
-                total_pessoas,
-                doc,
-                aprovados,
-                integrados,
-                campo,
-            ],
-        }
-    )
-
-    st.bar_chart(
-        funil.set_index("Etapa"),
-        horizontal=True,
-    )
-
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Pessoas", "Polos e Bases", "Recursos", "Atualizar"]
+    tab1, tab2, tab3 = st.tabs(
+        ["Pessoas", "Polos e Bases", "Recursos"]
     )
 
     with tab1:
@@ -1193,32 +1180,6 @@ elif pagina == "Pessoas & Estrutura":
                 hide_index=True,
             )
 
-
-    with tab4:
-        st.caption("Atualização individual com gravação no D1.")
-        if df_pessoas.empty:
-            st.info("Nenhuma pessoa cadastrada.")
-        else:
-            opts={f"{numero(r.get('id'))} — {texto(r.get('nome'))} — {texto(r.get('frente'))}":r for _,r in df_pessoas.sort_values("nome").iterrows()}
-            sel=st.selectbox("Colaborador",list(opts),key="edit_pessoa")
-            r=opts[sel]
-            with st.form(f"form_pessoa_{numero(r.get('id'))}"):
-                funcao=st.text_input("Função",value=texto(r.get("funcao"),""))
-                situacao=st.text_input("Situação",value=texto(r.get("situacao"),""))
-                c1,c2,c3,c4=st.columns(4)
-                doc=c1.checkbox("Documentação enviada",value=bool(numero(r.get("documentacao_enviada"))))
-                apr=c2.checkbox("Aprovado Aqua",value=bool(numero(r.get("aprovado_aqua"))))
-                integ=c3.checkbox("Integrado",value=bool(numero(r.get("integrado"))))
-                lib=c4.checkbox("Liberado campo",value=bool(numero(r.get("liberado_campo"))))
-                adm=st.date_input("Data de admissão",value=converter_data(r.get("data_admissao")))
-                obs=st.text_area("Observação",value=texto(r.get("observacao"),""))
-                ok=st.form_submit_button("Salvar colaborador",use_container_width=True)
-            if ok:
-                payload={"funcao":funcao or None,"situacao":situacao or None,"documentacao_enviada":1 if doc else 0,"aprovado_aqua":1 if apr else 0,"integrado":1 if integ else 0,"liberado_campo":1 if lib else 0,"data_admissao":adm.isoformat() if adm else None,"observacao":obs or None,"atualizado_por":"Painel Mobilização"}
-                try:
-                    salvar_api(f"pessoas/{numero(r.get('id'))}",payload); st.success("Colaborador atualizado no D1."); limpar_recarregar()
-                except Exception as e: st.error(f"Não foi possível salvar: {e}")
-
 # ============================================================
 # 6. CRONOGRAMA & RAMPAGEM
 # ============================================================
@@ -1229,7 +1190,7 @@ elif pagina == "Cronograma & Rampagem":
         "Prazos da implantação e evolução planejada versus mobilizada.",
     )
 
-    tab1, tab2, tab3 = st.tabs(["Cronograma", "Rampagem", "Atualizar"])
+    tab1, tab2 = st.tabs(["Cronograma", "Rampagem"])
 
     with tab1:
         if df_atividades.empty:
@@ -1449,33 +1410,6 @@ elif pagina == "Cronograma & Rampagem":
 
                 st.line_chart(grafico)
 
-
-    with tab3:
-        st.caption("Atualize a rampagem realizada. Os valores são gravados no D1.")
-        if df_rampagem.empty:
-            st.info("Nenhuma rampagem cadastrada.")
-        else:
-            opts={f"{numero(r.get('id'))} — {texto(r.get('frente'))} — {texto(r.get('periodo'))} — {texto(r.get('polo_base'))}":r for _,r in df_rampagem.iterrows()}
-            sel=st.selectbox("Registro de rampagem",list(opts),key="edit_ramp")
-            r=opts[sel]
-            with st.form(f"form_ramp_{numero(r.get('id'))}"):
-                c1,c2=st.columns(2)
-                ep=c1.number_input("Equipes planejadas",0,value=numero(r.get("equipes_planejadas")),step=1)
-                em=c2.number_input("Equipes mobilizadas",0,value=numero(r.get("equipes_mobilizadas")),step=1)
-                c3,c4=st.columns(2)
-                pp=c3.number_input("Pessoas planejadas",0,value=numero(r.get("pessoas_planejadas")),step=1)
-                pm=c4.number_input("Pessoas mobilizadas",0,value=numero(r.get("pessoas_mobilizadas")),step=1)
-                c5,c6=st.columns(2)
-                vp=c5.number_input("Veículos planejados",0,value=numero(r.get("veiculos_planejados")),step=1)
-                vm=c6.number_input("Veículos mobilizados",0,value=numero(r.get("veiculos_mobilizados")),step=1)
-                obs=st.text_area("Observação",value=texto(r.get("observacao"),""))
-                ok=st.form_submit_button("Salvar rampagem",use_container_width=True)
-            if ok:
-                payload={"equipes_planejadas":int(ep),"equipes_mobilizadas":int(em),"pessoas_planejadas":int(pp),"pessoas_mobilizadas":int(pm),"veiculos_planejados":int(vp),"veiculos_mobilizados":int(vm),"observacao":obs or None,"atualizado_por":"Painel Mobilização"}
-                try:
-                    salvar_api(f"rampagem/{numero(r.get('id'))}",payload); st.success("Rampagem atualizada no D1."); limpar_recarregar()
-                except Exception as e: st.error(f"Não foi possível salvar: {e}")
-
 # ============================================================
 # 7. MODO REUNIÃO
 # ============================================================
@@ -1596,9 +1530,6 @@ elif pagina == "Modo Reunião":
                         unsafe_allow_html=True,
                     )
 
-    st.markdown("## Macroetapas — visão executiva")
-    grafico_macroetapas(df_atividades, "reuniao")
-
     st.markdown("## Pessoas — visão quantitativa")
 
     total_pessoas = len(df_pessoas)
@@ -1673,7 +1604,7 @@ elif pagina == "Modo Reunião":
 st.markdown(
     f"""
     <div class="rodape">
-        V0 — versão-base oficial ·
+        V1 — layout executivo + edição direta ·
         Dados carregados da base estruturada de mobilização ·
         Go-Live: 26/10/2026
     </div>
