@@ -15,6 +15,185 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# === BLACK PIANO V0 ===
+st.markdown("""
+<style>
+
+/* =========================================================
+   BLACK PIANO — ENORSUL
+   Fundo preto | Cards grafite | Texto branco | Destaque vermelho
+   ========================================================= */
+
+/* CANVAS PRINCIPAL */
+html, body,
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+.stApp,
+.main {
+    background: #050506 !important;
+    color: #F5F5F7 !important;
+}
+
+[data-testid="stMainBlockContainer"],
+.block-container {
+    background: #050506 !important;
+}
+
+/* HEADER */
+[data-testid="stHeader"] {
+    background: rgba(5,5,6,0.96) !important;
+}
+
+/* SIDEBAR */
+[data-testid="stSidebar"],
+[data-testid="stSidebarContent"] {
+    background: #09090B !important;
+    border-right: 1px solid #242429 !important;
+}
+
+/* TEXTO */
+h1, h2, h3, h4, h5, h6,
+p, span, label,
+[data-testid="stMarkdownContainer"],
+[data-testid="stCaptionContainer"] {
+    color: #F5F5F7;
+}
+
+/* MÉTRICAS */
+[data-testid="stMetric"] {
+    background: #101014 !important;
+    border: 1px solid #26262C !important;
+    border-radius: 14px !important;
+    padding: 16px 18px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,.28) !important;
+}
+
+[data-testid="stMetricLabel"] * {
+    color: #A8A8B0 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #FFFFFF !important;
+}
+
+[data-testid="stMetricDelta"] * {
+    color: #D7D7DC !important;
+}
+
+/* CONTAINERS / CARDS */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #0D0D10 !important;
+    border: 1px solid #242429 !important;
+    border-radius: 14px !important;
+}
+
+/* TABS */
+[data-testid="stTabs"] {
+    background: transparent !important;
+}
+
+button[data-baseweb="tab"] {
+    color: #B9B9C0 !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: #FFFFFF !important;
+    border-bottom-color: #E31B2D !important;
+}
+
+/* INPUTS */
+[data-baseweb="input"] > div,
+[data-baseweb="select"] > div,
+[data-baseweb="textarea"] {
+    background: #111115 !important;
+    color: #FFFFFF !important;
+    border-color: #303036 !important;
+}
+
+input, textarea {
+    color: #FFFFFF !important;
+    background: #111115 !important;
+}
+
+/* BOTÕES */
+.stButton > button,
+.stFormSubmitButton > button {
+    background: #17171C !important;
+    color: #FFFFFF !important;
+    border: 1px solid #35353C !important;
+    border-radius: 9px !important;
+}
+
+.stButton > button:hover,
+.stFormSubmitButton > button:hover {
+    border-color: #E31B2D !important;
+    color: #FFFFFF !important;
+}
+
+/* BOTÃO PRIMÁRIO */
+button[kind="primary"] {
+    background: #E31B2D !important;
+    border-color: #E31B2D !important;
+    color: #FFFFFF !important;
+}
+
+/* DATAFRAMES / TABELAS */
+[data-testid="stDataFrame"],
+[data-testid="stTable"] {
+    background: #0D0D10 !important;
+    border-radius: 12px !important;
+}
+
+/* EXPANDERS */
+[data-testid="stExpander"] {
+    background: #0D0D10 !important;
+    border: 1px solid #242429 !important;
+    border-radius: 12px !important;
+}
+
+/* ALERTAS */
+[data-testid="stAlert"] {
+    border-radius: 10px !important;
+}
+
+/* DIVISORES */
+hr {
+    border-color: #25252A !important;
+}
+
+/* LINKS */
+a {
+    color: #F05A67 !important;
+}
+
+/* REMOVE FUNDOS CLAROS DE ELEMENTOS EMBUTIDOS */
+iframe {
+    background: transparent !important;
+}
+
+/* SCROLLBAR */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #050506;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #303036;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #E31B2D;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
 API_URL = "https://aqua-mobilizacao-api.leandro-cifra.workers.dev"
 GO_LIVE = date(2026, 10, 26)
 
