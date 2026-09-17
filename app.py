@@ -569,11 +569,31 @@ def _contar_aprovados_pessoas(candidatas):
     return int(df_pessoas[c].apply(_status_aprovado).sum())
 
 
+def _pessoas_unicas():
+    """Remove duplicidades de sincronizações anteriores para os indicadores."""
+    if df_pessoas.empty:
+        return df_pessoas.copy()
+    base = df_pessoas.copy()
+    for c in ["frente", "polo_base", "nome"]:
+        if c not in base.columns:
+            base[c] = ""
+    base["_chave_pessoa"] = (
+        base["frente"].fillna("").astype(str).str.strip().str.lower() + "|" +
+        base["polo_base"].fillna("").astype(str).str.strip().str.lower() + "|" +
+        base["nome"].fillna("").astype(str).str.strip().str.lower()
+    )
+    return base.drop_duplicates("_chave_pessoa", keep="last").drop(columns=["_chave_pessoa"])
+
+
 def indicadores_mobilizacao_macro():
+    global df_pessoas
+    _df_original = df_pessoas
+    df_pessoas = _pessoas_unicas()
     total_pessoas = len(df_pessoas)
-    contratados = _contar_aprovados_pessoas(["admissao", "situacao", "aprovado_aqua"])
-    if contratados == 0 and total_pessoas:
-        contratados = total_pessoas
+
+    # Na planilha oficial, "Admissão" é status (Aprovado/Pendente), não uma data.
+    # O Worker mantém esse status em data_admissao por compatibilidade com o banco atual.
+    contratados = _contar_aprovados_pessoas(["data_admissao", "admissao", "situacao"])
 
     # Documentação: considera o funil da planilha-base (ASO, RH, SSMA, cadastro e aprovação cliente).
     etapas_doc = [
@@ -592,12 +612,14 @@ def indicadores_mobilizacao_macro():
     frota_plan, frota_disp = recursos_por_categoria(["frota", "veículo", "veiculo", "carro", "moto"])
     epi_plan, epi_disp = recursos_por_categoria(["epi", "fardamento", "uniforme", "bota", "camisa", "calça", "calca"])
 
-    return [
+    resultado = [
         ("Contratação de pessoal", percentual_seguro(contratados, total_pessoas), f"{contratados} contratados de {total_pessoas}"),
         ("Frota", percentual_seguro(frota_disp, frota_plan), f"{frota_disp} disponíveis de {frota_plan}"),
         ("Documentação / SSMA", docs_pct, docs_detalhe),
         ("Fardamento & EPI", percentual_seguro(epi_disp, epi_plan), f"{epi_disp} disponíveis de {epi_plan}"),
     ]
+    df_pessoas = _df_original
+    return resultado
 
 
 def card_macro(titulo, pct, detalhe):
@@ -879,11 +901,20 @@ def analisar_planilha_mobilizacao(uploaded):
     # 2) Aprovação nominal de funcionários
     if "Aprovação Funcionários" in xls.sheet_names:
         df = pd.read_excel(io.BytesIO(conteudo), sheet_name="Aprovação Funcionários", header=2)
-        mapa = {
-            "Admissão":"admissao", "ASO":"aso", "Docs RH":"docs_rh", "Docs SSMA":"docs_ssma",
-            "Fardamento":"fardamento", "EPI":"epi", "Cadastro Cliente":"cadastro_cliente",
-            "Aprovação Cliente":"aprovacao_cliente", "Integração":"integracao", "Treinamento":"treinamento",
-            "Acesso ao Sistema":"acesso_sistema", "Liberado para Campo":"liberado_campo"
+        # Mapeamento alinhado ao schema real da tabela pessoas no D1.
+        # "Admissão" é um STATUS da planilha; mantemos em data_admissao por compatibilidade.
+        mapa_status_texto = {"Admissão": "data_admissao"}
+        mapa_booleano = {
+            "ASO": "aso",
+            "Docs RH": "docs_rh",
+            "Docs SSMA": "docs_ssma",
+            "Fardamento": "fardamento",
+            "EPI": "epi",
+            "Integração": "integracao_ssma",
+            "Treinamento": "treinamento_operacional",
+            "Liberado para Campo": "liberado_campo",
+            "Aprovação Cliente": "aprovado_aqua",
+            "Cadastro Cliente": "documentacao_enviada",
         }
         for _, r in df.iterrows():
             nome = r.get("Nome")
@@ -894,9 +925,12 @@ def analisar_planilha_mobilizacao(uploaded):
             cpf = texto(r.get("CPF / Matrícula"), "")
             payload = {"frente":frente, "polo_base":polo, "nome":texto(nome,""), "cpf_matricula":cpf,
                        "funcao":texto(r.get("Função"),""), "equipe":texto(r.get("Equipe"),"")}
-            for col, campo in mapa.items():
+            for col, campo in mapa_status_texto.items():
                 if col in df.columns:
                     payload[campo] = _status_etapa(r.get(col))
+            for col, campo in mapa_booleano.items():
+                if col in df.columns:
+                    payload[campo] = (_status_etapa(r.get(col)) == "Aprovado")
             atual = idx_pes_cpf.get(_norm(cpf)) if _norm(cpf) else None
             if atual is None:
                 atual = idx_pes_nome.get((_norm(frente), _norm(polo), _norm(nome)))
