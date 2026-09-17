@@ -849,14 +849,24 @@ def analisar_planilha_mobilizacao(uploaded):
             chave = (_norm(r.get("frente")), _norm(r.get("macroetapa")), _norm(r.get("atividade")))
             idx_atv[chave] = r.to_dict()
 
-    idx_pes_cpf, idx_pes_nome = {}, {}
+    # Índices de pessoas para UPSERT.
+    # Prioridade: CPF/Matrícula; na ausência, Frente + Nome.
+    # O polo NÃO entra na chave porque pode variar entre planilha e banco
+    # (ex.: Recife x Polo Recife), o que antes fazia o importador duplicar pessoas.
+    idx_pes_cpf, idx_pes_frente_nome = {}, {}
     if not df_pessoas.empty:
         for _, r in df_pessoas.iterrows():
+            registro = r.to_dict()
             cpf = _norm(r.get("cpf_matricula", r.get("cpf")))
             if cpf:
-                idx_pes_cpf[cpf] = r.to_dict()
-            chave = (_norm(r.get("frente")), _norm(r.get("polo_base", r.get("polo"))), _norm(r.get("nome")))
-            idx_pes_nome[chave] = r.to_dict()
+                idx_pes_cpf[cpf] = registro
+            chave_nome = (_norm(r.get("frente")), _norm(r.get("nome")))
+            if chave_nome[0] and chave_nome[1]:
+                # Em caso de duplicidade já existente, conserva um ID válido
+                # para que novas sincronizações atualizem em vez de adicionar.
+                anterior = idx_pes_frente_nome.get(chave_nome)
+                if anterior is None or (anterior.get("id") is None and registro.get("id") is not None):
+                    idx_pes_frente_nome[chave_nome] = registro
 
     idx_base = {}
     if not df_polos.empty:
@@ -933,7 +943,7 @@ def analisar_planilha_mobilizacao(uploaded):
                     payload[campo] = (_status_etapa(r.get(col)) == "Aprovado")
             atual = idx_pes_cpf.get(_norm(cpf)) if _norm(cpf) else None
             if atual is None:
-                atual = idx_pes_nome.get((_norm(frente), _norm(polo), _norm(nome)))
+                atual = idx_pes_frente_nome.get((_norm(frente), _norm(nome)))
             acao = "Atualizar" if atual and atual.get("id") is not None else "Adicionar"
             operacoes.append({"tipo":"Pessoa", "acao":acao, "id":atual.get("id") if atual else None,
                               "chave":f"{frente} · {polo} · {texto(nome,'')}", "payload":payload})
@@ -1003,7 +1013,7 @@ def painel_importacao_excel():
     st.dataframe(cont, use_container_width=True, hide_index=True)
     prev = pd.DataFrame([{"Tipo":o["tipo"], "Ação":o["acao"], "Registro":o["chave"]} for o in operacoes])
     st.dataframe(prev, use_container_width=True, hide_index=True, height=320)
-    st.caption(f"Total identificado: {len(operacoes)} registros. Registros existentes serão atualizados; novos registros serão adicionados.")
+    st.caption(f"Total identificado: {len(operacoes)} registros. Pessoas existentes são reconhecidas por CPF/Matrícula ou Frente + Nome; somente pessoas realmente novas serão adicionadas.")
     confirmar = st.checkbox("Conferi a prévia e autorizo a sincronização desta planilha.", key="confirm_import")
     if st.button("Sincronizar planilha", type="primary", use_container_width=True, disabled=not confirmar, key="btn_sync_excel"):
         with st.spinner("Sincronizando com o banco..."):
