@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, date
-import plotly.graph_objects as go
+import plotly.express as px
+from datetime import date, datetime, timedelta
 
 # ============================================================
 # CONFIGURAÇÃO
@@ -10,15 +10,15 @@ import plotly.graph_objects as go
 
 st.set_page_config(
     page_title="Mobilização | Aqua Pernambuco – Enorsul",
-    page_icon="◆",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-API = "https://aqua-mobilizacao-api.leandro-cifra.workers.dev"
+API_URL = "https://aqua-mobilizacao-api.leandro-cifra.workers.dev"
 GO_LIVE = date(2026, 10, 26)
 
-STATUS = [
+STATUS_VALIDOS = [
     "Não iniciado",
     "Em andamento",
     "Aguardando Aqua",
@@ -26,448 +26,121 @@ STATUS = [
     "Cancelado",
 ]
 
-PRIORIDADES = [
-    "Crítica",
-    "Alta",
-    "Média",
-    "Baixa",
-]
+ORDEM_PRIORIDADE = {
+    "Crítica": 1,
+    "Alta": 2,
+    "Média": 3,
+    "Baixa": 4,
+}
 
 # ============================================================
-# BLACK PIANO
+# ESTILO
 # ============================================================
 
 st.markdown(
     """
-<style>
-
-/* =========================================================
-   BASE
-========================================================= */
-
-:root {
-    --bg: #050506;
-    --bg2: #08080a;
-    --card: #0d0d10;
-    --card2: #121216;
-    --line: #292930;
-    --line2: #36363e;
-    --text: #f5f5f7;
-    --muted: #9b9ba6;
-    --red: #e31b2d;
-    --green: #37c98b;
-    --yellow: #e7bb55;
-    --blue: #559fd0;
-}
-
-html,
-body,
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"] {
-    background:
-        radial-gradient(
-            circle at 80% -15%,
-            #24242a 0%,
-            #0a0a0d 31%,
-            #050506 68%
-        ) !important;
-    color: var(--text) !important;
-}
-
-[data-testid="stAppViewContainer"] > .main {
-    background: transparent !important;
-}
-
-[data-testid="stHeader"] {
-    background: rgba(5,5,6,.78) !important;
-    backdrop-filter: blur(18px);
-}
-
-.block-container {
-    max-width: 1580px;
-    padding-top: 1.2rem;
-    padding-bottom: 5rem;
-}
-
-/* =========================================================
-   SIDEBAR
-========================================================= */
-
-[data-testid="stSidebar"] {
-    background:
-        linear-gradient(
-            180deg,
-            #09090b 0%,
-            #050506 100%
-        ) !important;
-
-    border-right: 1px solid #202025;
-}
-
-[data-testid="stSidebar"] * {
-    color: #ededf0 !important;
-}
-
-/* =========================================================
-   TEXTOS
-========================================================= */
-
-h1, h2, h3, h4 {
-    color: #ffffff !important;
-    letter-spacing: -0.025em;
-}
-
-h1 {
-    font-size: 2.05rem !important;
-    font-weight: 780 !important;
-}
-
-h2 {
-    font-size: 1.28rem !important;
-    margin-top: 1.5rem !important;
-}
-
-p,
-span,
-label {
-    color: #dedee3;
-}
-
-.eyebrow {
-    color: var(--red);
-    font-size: .72rem;
-    font-weight: 800;
-    letter-spacing: .13em;
-    text-transform: uppercase;
-    margin-bottom: 5px;
-}
-
-.subtitle {
-    color: #9696a2;
-    font-size: .92rem;
-    margin-top: -9px;
-    margin-bottom: 20px;
-}
-
-/* =========================================================
-   MÉTRICAS
-========================================================= */
-
-[data-testid="stMetric"] {
-    background:
-        linear-gradient(
-            145deg,
-            rgba(29,29,34,.96),
-            rgba(8,8,10,.98)
-        ) !important;
-
-    border: 1px solid #2c2c33;
-    border-radius: 18px;
-    padding: 16px 18px;
-
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.07),
-        0 14px 36px rgba(0,0,0,.30);
-}
-
-[data-testid="stMetricLabel"] {
-    color: #a2a2ad !important;
-    font-weight: 600;
-}
-
-[data-testid="stMetricValue"] {
-    color: #ffffff !important;
-    font-weight: 760;
-}
-
-/* =========================================================
-   INPUTS - EVITA FUNDO BRANCO
-========================================================= */
-
-[data-baseweb="input"] > div,
-[data-baseweb="base-input"],
-[data-baseweb="select"] > div,
-[data-baseweb="textarea"] > div,
-[data-baseweb="popover"],
-[data-baseweb="menu"],
-[data-baseweb="select"] {
-    background-color: #101013 !important;
-    color: #f5f5f7 !important;
-    border-color: #34343c !important;
-}
-
-input,
-textarea {
-    background-color: #101013 !important;
-    color: #f5f5f7 !important;
-    -webkit-text-fill-color: #f5f5f7 !important;
-}
-
-[data-baseweb="select"] span {
-    color: #f5f5f7 !important;
-}
-
-[data-baseweb="menu"] {
-    background: #101013 !important;
-}
-
-[data-baseweb="menu"] li {
-    background: #101013 !important;
-    color: white !important;
-}
-
-[data-baseweb="menu"] li:hover {
-    background: #202026 !important;
-}
-
-/* DATE INPUT */
-
-[data-testid="stDateInput"] input {
-    background: #101013 !important;
-    color: white !important;
-}
-
-/* NUMBER INPUT */
-
-[data-testid="stNumberInput"] input {
-    background: #101013 !important;
-    color: white !important;
-}
-
-/* =========================================================
-   BOTÕES
-========================================================= */
-
-div.stButton > button,
-div.stFormSubmitButton > button {
-    border-radius: 12px !important;
-    border: 1px solid #383840 !important;
-    background:
-        linear-gradient(
-            145deg,
-            #1a1a1f,
-            #0c0c0f
-        ) !important;
-    color: #ffffff !important;
-    font-weight: 650 !important;
-}
-
-div.stButton > button:hover,
-div.stFormSubmitButton > button:hover {
-    border-color: var(--red) !important;
-    box-shadow: 0 0 0 1px rgba(227,27,45,.18);
-}
-
-/* =========================================================
-   TABELAS
-========================================================= */
-
-[data-testid="stDataFrame"] {
-    border: 1px solid #28282f;
-    border-radius: 16px;
-    overflow: hidden;
-    background: #09090b !important;
-}
-
-[data-testid="stDataFrame"] * {
-    color: #ededf0;
-}
-
-/* =========================================================
-   EXPANDER
-========================================================= */
-
-[data-testid="stExpander"] {
-    background:
-        linear-gradient(
-            145deg,
-            rgba(22,22,27,.97),
-            rgba(8,8,10,.98)
-        ) !important;
-
-    border: 1px solid #292930 !important;
-    border-radius: 16px !important;
-    margin-bottom: 9px;
-}
-
-[data-testid="stExpander"] details {
-    background: transparent !important;
-}
-
-/* =========================================================
-   FORM
-========================================================= */
-
-[data-testid="stForm"] {
-    background:
-        linear-gradient(
-            145deg,
-            rgba(20,20,24,.98),
-            rgba(7,7,9,.99)
-        ) !important;
-
-    border: 1px solid #292930 !important;
-    border-radius: 18px !important;
-    padding: 18px !important;
-}
-
-/* =========================================================
-   TABS
-========================================================= */
-
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-}
-
-.stTabs [data-baseweb="tab"] {
-    background: #0e0e11 !important;
-    border: 1px solid #292930 !important;
-    border-radius: 12px !important;
-    padding: 9px 16px !important;
-}
-
-.stTabs [aria-selected="true"] {
-    border-color: var(--red) !important;
-    box-shadow:
-        inset 0 -2px 0 var(--red);
-}
-
-/* =========================================================
-   CARDS
-========================================================= */
-
-.piano-card {
-    background:
-        linear-gradient(
-            145deg,
-            rgba(24,24,29,.96),
-            rgba(7,7,9,.99)
-        );
-
-    border: 1px solid #292930;
-    border-radius: 18px;
-    padding: 17px 18px;
-    margin: 9px 0;
-
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.06),
-        0 12px 30px rgba(0,0,0,.25);
-}
-
-.piano-title {
-    font-weight: 720;
-    color: white;
-    font-size: .98rem;
-    margin-bottom: 7px;
-}
-
-.piano-body {
-    color: #aaaab4;
-    font-size: .87rem;
-    line-height: 1.5;
-}
-
-/* =========================================================
-   PILLS
-========================================================= */
-
-.pill {
-    display: inline-block;
-    border: 1px solid #34343c;
-    border-radius: 999px;
-    padding: 3px 8px;
-    margin: 2px 4px 5px 0;
-    font-size: .70rem;
-    color: #d8d8dd;
-    background: #111115;
-}
-
-.red {
-    border-color: #65232c;
-    color: #ff8b97;
-    background: #1d0c10;
-}
-
-.green {
-    border-color: #20513d;
-    color: #7fe0b4;
-    background: #091811;
-}
-
-.yellow {
-    border-color: #604c1c;
-    color: #ffd477;
-    background: #1b1608;
-}
-
-.blue {
-    border-color: #234a63;
-    color: #8ac9ef;
-    background: #09161f;
-}
-
-/* =========================================================
-   ALERTS
-========================================================= */
-
-[data-testid="stAlert"] {
-    background: #101013 !important;
-    border-radius: 14px !important;
-}
-
-/* =========================================================
-   PROGRESS
-========================================================= */
-
-[data-testid="stProgress"] > div > div {
-    background-color: #26262c !important;
-}
-
-[data-testid="stProgress"] > div > div > div {
-    background-color: var(--red) !important;
-}
-
-/* =========================================================
-   HERO
-========================================================= */
-
-.hero {
-    background:
-        linear-gradient(
-            110deg,
-            rgba(31,31,37,.95),
-            rgba(8,8,10,.98)
-        );
-
-    border: 1px solid #2c2c33;
-    border-radius: 22px;
-    padding: 21px 23px;
-    margin-bottom: 18px;
-
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.08),
-        0 20px 45px rgba(0,0,0,.28);
-}
-
-.hero strong {
-    color: white;
-}
-
-.hero span {
-    color: #a5a5af;
-}
-
-.small-note {
-    color: #777783;
-    font-size: .76rem;
-}
-
-hr {
-    border-color: #242429 !important;
-}
-
-</style>
-""",
+    <style>
+        .block-container {
+            padding-top: 1.4rem;
+            padding-bottom: 3rem;
+            max-width: 1600px;
+        }
+
+        [data-testid="stSidebar"] {
+            border-right: 1px solid #E5E7EB;
+        }
+
+        h1 {
+            font-size: 2rem !important;
+            font-weight: 750 !important;
+            letter-spacing: -0.03em;
+        }
+
+        h2 {
+            font-size: 1.35rem !important;
+            font-weight: 700 !important;
+            margin-top: 1.2rem !important;
+        }
+
+        h3 {
+            font-size: 1.05rem !important;
+            font-weight: 700 !important;
+        }
+
+        [data-testid="stMetric"] {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            padding: 14px 16px;
+            min-height: 105px;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-weight: 600;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-weight: 750;
+        }
+
+        .titulo-pagina {
+            margin-bottom: 0.1rem;
+        }
+
+        .subtitulo {
+            color: #667085;
+            font-size: 0.93rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 12px;
+        }
+
+        .card-titulo {
+            font-weight: 700;
+            font-size: 0.96rem;
+            margin-bottom: 6px;
+        }
+
+        .card-texto {
+            color: #475467;
+            font-size: 0.90rem;
+            line-height: 1.45;
+        }
+
+        .tag {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 4px 9px;
+            font-size: 0.76rem;
+            font-weight: 650;
+            background: #F2F4F7;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+
+        .rodape {
+            color: #98A2B3;
+            font-size: 0.78rem;
+            margin-top: 2.5rem;
+        }
+
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #EAECF0;
+            border-radius: 10px;
+        }
+
+        .modo-reuniao {
+            padding: 6px 0 12px 0;
+            color: #667085;
+        }
+    </style>
+    """,
     unsafe_allow_html=True,
 )
 
@@ -475,1128 +148,479 @@ hr {
 # API
 # ============================================================
 
-def api_get(rota):
-    try:
-        r = requests.get(
-            f"{API}{rota}",
-            timeout=20
-        )
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        st.error(
-            f"Erro ao consultar {rota}: {e}"
-        )
-        return []
+@st.cache_data(ttl=60, show_spinner=False)
+def carregar_api(rota):
+    resposta = requests.get(f"{API_URL}/{rota}", timeout=20)
+    resposta.raise_for_status()
+    return resposta.json()
 
 
-def api_put(rota, dados):
-    try:
-        r = requests.put(
-            f"{API}{rota}",
-            json=dados,
-            timeout=25
-        )
-
+def salvar_api(rota, payload):
+    resposta = requests.put(f"{API_URL}/{rota}", json=payload, timeout=30)
+    if not resposta.ok:
         try:
-            retorno = r.json()
+            detalhe = resposta.json()
         except Exception:
-            retorno = {
-                "ok": False,
-                "erro": r.text
-            }
-
-        if not r.ok:
-            return False, retorno
-
-        return True, retorno
-
-    except Exception as e:
-        return False, {
-            "ok": False,
-            "erro": str(e)
-        }
+            detalhe = resposta.text
+        raise RuntimeError(f"Erro {resposta.status_code}: {detalhe}")
+    return resposta.json()
 
 
-@st.cache_data(ttl=20)
-def carregar_dados():
-    return {
-        "frentes": api_get("/frentes"),
-        "atividades": api_get("/atividades"),
-        "polos": api_get("/polos"),
-        "pessoas": api_get("/pessoas"),
-        "recursos": api_get("/recursos"),
-        "rampagem": api_get("/rampagem"),
-        "resumo": api_get("/resumo"),
-        "historico": api_get("/historico?limite=300"),
-    }
-
-
-def recarregar():
+def limpar_recarregar():
     st.cache_data.clear()
     st.rerun()
 
 
+def carregar_dados():
+    rotas = [
+        "resumo",
+        "atividades",
+        "frentes",
+        "polos",
+        "pessoas",
+        "recursos",
+        "rampagem",
+    ]
+
+    dados = {}
+
+    for rota in rotas:
+        try:
+            dados[rota] = carregar_api(rota)
+        except Exception:
+            dados[rota] = []
+
+    return dados
+
+
 dados = carregar_dados()
 
-frentes = pd.DataFrame(dados["frentes"])
-atividades = pd.DataFrame(dados["atividades"])
-polos = pd.DataFrame(dados["polos"])
-pessoas = pd.DataFrame(dados["pessoas"])
-recursos = pd.DataFrame(dados["recursos"])
-rampagem = pd.DataFrame(dados["rampagem"])
-historico = pd.DataFrame(dados["historico"])
-
+df_resumo = pd.DataFrame(dados["resumo"])
+df_atividades = pd.DataFrame(dados["atividades"])
+df_frentes = pd.DataFrame(dados["frentes"])
+df_polos = pd.DataFrame(dados["polos"])
+df_pessoas = pd.DataFrame(dados["pessoas"])
+df_recursos = pd.DataFrame(dados["recursos"])
+df_rampagem = pd.DataFrame(dados["rampagem"])
 
 # ============================================================
-# FUNÇÕES
+# FUNÇÕES AUXILIARES
 # ============================================================
 
-def txt(v):
-    if v is None:
-        return ""
-    if pd.isna(v):
-        return ""
-    return str(v)
-
-
-def inteiro(v, padrao=0):
+def numero(valor):
     try:
-        return int(v)
+        if pd.isna(valor):
+            return 0
+        return int(valor)
     except Exception:
+        return 0
+
+
+def texto(valor, padrao="—"):
+    if valor is None:
+        return padrao
+    try:
+        if pd.isna(valor):
+            return padrao
+    except Exception:
+        pass
+
+    valor = str(valor).strip()
+
+    if not valor or valor.lower() in ["none", "nan", "nat"]:
         return padrao
 
+    return valor
 
-def data_valor(v):
-    if not v:
+
+def converter_data(valor):
+    if valor is None:
         return None
 
     try:
-        return pd.to_datetime(v).date()
+        if pd.isna(valor):
+            return None
+    except Exception:
+        pass
+
+    try:
+        return pd.to_datetime(valor).date()
     except Exception:
         return None
 
 
-def data_api(v):
-    if v is None:
-        return None
-
-    if hasattr(v, "strftime"):
-        return v.strftime("%Y-%m-%d")
-
-    return str(v)
+def data_br(valor):
+    d = converter_data(valor)
+    return d.strftime("%d/%m/%Y") if d else "—"
 
 
-def formatar_data(v):
-    if not v:
-        return "—"
+def percentual_mobilizacao(total, concluidos, cancelados=0):
+    validos = max(numero(total) - numero(cancelados), 0)
 
-    try:
-        return pd.to_datetime(v).strftime(
-            "%d/%m/%Y"
-        )
-    except Exception:
-        return str(v)
+    if validos == 0:
+        return 0.0
+
+    return numero(concluidos) / validos * 100
 
 
-def cabecalho(titulo, subtitulo):
-    st.markdown(
-        f"""
-        <div class="eyebrow">
-            V0 · BLACK PIANO
-        </div>
-        <h1>{titulo}</h1>
-        <div class="subtitle">
-            {subtitulo}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def resumo_df(df):
-    if df.empty:
-        return {
-            "total": 0,
-            "concluidos": 0,
-            "andamento": 0,
-            "aqua": 0,
-            "nao": 0,
-            "cancelados": 0,
-            "pct": 0,
-        }
-
-    cont = df["status"].value_counts()
-
-    total = len(df)
-    concluidos = inteiro(
-        cont.get("Concluído", 0)
-    )
-    cancelados = inteiro(
-        cont.get("Cancelado", 0)
-    )
-
-    denominador = total - cancelados
-
-    pct = (
-        concluidos / denominador * 100
-        if denominador > 0
-        else 0
-    )
-
-    return {
-        "total": total,
-        "concluidos": concluidos,
-        "andamento": inteiro(
-            cont.get("Em andamento", 0)
-        ),
-        "aqua": inteiro(
-            cont.get("Aguardando Aqua", 0)
-        ),
-        "nao": inteiro(
-            cont.get("Não iniciado", 0)
-        ),
-        "cancelados": cancelados,
-        "pct": pct,
-    }
+def coluna_existente(df, coluna, valor_padrao=None):
+    if coluna not in df.columns:
+        df[coluna] = valor_padrao
+    return df
 
 
 def preparar_atividades(df):
     if df.empty:
         return df
 
-    x = df.copy()
+    df = df.copy()
 
-    x["data_prevista_dt"] = pd.to_datetime(
-        x["data_prevista"],
-        errors="coerce"
-    )
-
-    hoje = pd.Timestamp(date.today())
-
-    x["atrasada"] = (
-        x["data_prevista_dt"].notna()
-        & (x["data_prevista_dt"] < hoje)
-        & ~x["status"].isin(
-            ["Concluído", "Cancelado"]
-        )
-    )
-
-    x["prazo_proximo"] = (
-        x["data_prevista_dt"].notna()
-        & (x["data_prevista_dt"] >= hoje)
-        & (
-            x["data_prevista_dt"]
-            <= hoje + pd.Timedelta(days=7)
-        )
-        & ~x["status"].isin(
-            ["Concluído", "Cancelado"]
-        )
-    )
-
-    prioridade_ordem = {
-        "Crítica": 0,
-        "Alta": 1,
-        "Média": 2,
-        "Baixa": 3,
-    }
-
-    x["prioridade_ordem"] = (
-        x["prioridade"]
-        .map(prioridade_ordem)
-        .fillna(9)
-    )
-
-    return x
-
-
-atividades = preparar_atividades(
-    atividades
-)
-
-
-def pontos_criticos(df, limite=8):
-    if df.empty:
-        return df
-
-    x = df[
-        ~df["status"].isin(
-            ["Concluído", "Cancelado"]
-        )
-    ].copy()
-
-    if x.empty:
-        return x
-
-    def nivel(r):
-        if r["atrasada"]:
-            return 0
-
-        if r["status"] == "Aguardando Aqua":
-            return 1
-
-        if r["prazo_proximo"]:
-            return 2
-
-        if r["prioridade"] == "Crítica":
-            return 3
-
-        if r["prioridade"] == "Alta":
-            return 4
-
-        return 5
-
-    x["nivel"] = x.apply(
-        nivel,
-        axis=1
-    )
-
-    return (
-        x.sort_values(
-            [
-                "nivel",
-                "prioridade_ordem",
-                "data_prevista_dt",
-            ],
-            na_position="last",
-        )
-        .head(limite)
-    )
-
-
-def badges(r):
-    lista = []
-
-    if bool(r.get("atrasada", False)):
-        lista.append(
-            '<span class="pill red">ATRASADA</span>'
-        )
-
-    if (
-        r.get("status")
-        == "Aguardando Aqua"
-    ):
-        lista.append(
-            '<span class="pill yellow">'
-            'AGUARDANDO AQUA'
-            '</span>'
-        )
-
-    if bool(
-        r.get("prazo_proximo", False)
-    ):
-        lista.append(
-            '<span class="pill blue">'
-            'PRAZO PRÓXIMO'
-            '</span>'
-        )
-
-    if (
-        r.get("status")
-        == "Concluído"
-    ):
-        lista.append(
-            '<span class="pill green">'
-            'CONCLUÍDO'
-            '</span>'
-        )
-
-    prioridade = txt(
-        r.get("prioridade")
-    )
-
-    if prioridade:
-        lista.append(
-            f'<span class="pill">'
-            f'{prioridade}'
-            f'</span>'
-        )
-
-    return "".join(lista)
-
-
-def cards_criticos(df, limite=6):
-    x = pontos_criticos(
-        df,
-        limite
-    )
-
-    if x.empty:
-        st.success(
-            "Nenhum ponto crítico identificado."
-        )
-        return
-
-    for _, r in x.iterrows():
-        acao = (
-            txt(r.get("proximo_passo_manual"))
-            or txt(r.get("pendencia_acao"))
-        )
-
-        html = (
-            f'<div class="piano-card">'
-            f'<div class="piano-title">{txt(r.get("atividade"))}</div>'
-            f'{badges(r)}'
-            f'<div class="piano-body">'
-            f'<b>{txt(r.get("frente"))}</b> · {txt(r.get("status"))}<br>'
-            f'Responsável: {txt(r.get("responsavel")) or "—"} '
-            f'· Prazo: {formatar_data(r.get("data_prevista"))}'
-            f'{"<br><br>" + acao if acao else ""}'
-            f'</div></div>'
-        )
-        st.markdown(html, unsafe_allow_html=True)
-
-
-def grafico_status(df):
-    r = resumo_df(df)
-
-    labels = [
-        "Concluído",
-        "Em andamento",
-        "Aguardando Aqua",
-        "Não iniciado",
-    ]
-
-    valores = [
-        r["concluidos"],
-        r["andamento"],
-        r["aqua"],
-        r["nao"],
-    ]
-
-    fig = go.Figure(
-        go.Bar(
-            x=valores,
-            y=labels,
-            orientation="h",
-            text=valores,
-            textposition="auto",
-            marker_color=[
-                "#37c98b",
-                "#559fd0",
-                "#e7bb55",
-                "#e31b2d",
-            ],
-        )
-    )
-
-    fig.update_layout(
-        height=275,
-        margin=dict(
-            l=0,
-            r=10,
-            t=10,
-            b=0
-        ),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font_color="#d7d7dc",
-        xaxis=dict(
-            visible=False,
-            showgrid=False
-        ),
-        yaxis=dict(
-            showgrid=False,
-            autorange="reversed"
-        ),
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True,
-        config={
-            "displayModeBar": False
-        },
-    )
-
-
-def tabela_atividades(df):
-    if df.empty:
-        st.info(
-            "Nenhuma atividade encontrada."
-        )
-        return
-
-    x = df.copy()
-
-    x["Prazo"] = (
-        x["data_prevista"]
-        .apply(formatar_data)
-    )
-
-    x["%"] = (
-        x["percentual"]
-        .fillna(0)
-        .astype(int)
-    )
-
-    colunas = [
+    campos = [
+        "id",
+        "frente",
         "macroetapa",
         "atividade",
         "prioridade",
         "status",
-        "%",
+        "percentual",
         "responsavel",
+        "data_inicio",
+        "data_prevista",
+        "data_conclusao",
+        "pendencia_acao",
+        "prazo_pendencia",
+        "proximo_passo_manual",
+        "observacao",
+        "evidencia",
+        "criterio_aceite",
         "dependencia",
-        "Prazo",
+        "polo_base",
     ]
+
+    for campo in campos:
+        if campo not in df.columns:
+            df[campo] = None
+
+    df["data_prevista_dt"] = pd.to_datetime(
+        df["data_prevista"], errors="coerce"
+    )
+
+    df["prazo_pendencia_dt"] = pd.to_datetime(
+        df["prazo_pendencia"], errors="coerce"
+    )
+
+    df["ordem_prioridade"] = (
+        df["prioridade"].map(ORDEM_PRIORIDADE).fillna(99)
+    )
+
+    hoje = pd.Timestamp(date.today())
+
+    df["atrasada"] = (
+        df["data_prevista_dt"].notna()
+        & (df["data_prevista_dt"] < hoje)
+        & (~df["status"].isin(["Concluído", "Cancelado"]))
+    )
+
+    df["prazo_proximo"] = (
+        df["data_prevista_dt"].notna()
+        & (df["data_prevista_dt"] >= hoje)
+        & (df["data_prevista_dt"] <= hoje + pd.Timedelta(days=7))
+        & (~df["status"].isin(["Concluído", "Cancelado"]))
+    )
+
+    return df
+
+
+df_atividades = preparar_atividades(df_atividades)
+
+
+def totais_gerais():
+    if df_resumo.empty:
+        return {
+            "total": 0,
+            "concluidos": 0,
+            "em_andamento": 0,
+            "aguardando_aqua": 0,
+            "nao_iniciados": 0,
+            "cancelados": 0,
+            "percentual": 0,
+        }
+
+    campos = [
+        "total",
+        "concluidos",
+        "em_andamento",
+        "aguardando_aqua",
+        "nao_iniciados",
+        "cancelados",
+    ]
+
+    totais = {}
+
+    for campo in campos:
+        if campo in df_resumo.columns:
+            totais[campo] = int(
+                pd.to_numeric(
+                    df_resumo[campo], errors="coerce"
+                ).fillna(0).sum()
+            )
+        else:
+            totais[campo] = 0
+
+    totais["percentual"] = percentual_mobilizacao(
+        totais["total"],
+        totais["concluidos"],
+        totais["cancelados"],
+    )
+
+    return totais
+
+
+totais = totais_gerais()
+
+
+def proximo_passo(row):
+    manual = texto(row.get("proximo_passo_manual"), "")
+
+    if manual:
+        return manual
+
+    pendencia = texto(row.get("pendencia_acao"), "")
+
+    if pendencia:
+        return pendencia
+
+    return "—"
+
+
+def pontos_criticos(df, limite=10):
+    if df.empty:
+        return df
+
+    base = df[
+        ~df["status"].isin(["Concluído", "Cancelado"])
+    ].copy()
+
+    if base.empty:
+        return base
+
+    def nivel(row):
+        if bool(row.get("atrasada")):
+            return 1
+        if row.get("status") == "Aguardando Aqua":
+            return 2
+        if bool(row.get("prazo_proximo")):
+            return 3
+        if row.get("prioridade") == "Crítica":
+            return 4
+        if row.get("prioridade") == "Alta":
+            return 5
+        return 6
+
+    base["nivel_critico"] = base.apply(nivel, axis=1)
+
+    base = base.sort_values(
+        ["nivel_critico", "ordem_prioridade", "data_prevista_dt"],
+        na_position="last",
+    )
+
+    return base.head(limite)
+
+
+def tabela_atividades(df):
+    if df.empty:
+        st.info("Nenhuma atividade cadastrada para esta seleção.")
+        return
+
+    exibicao = df.copy()
+
+    exibicao["Prazo"] = exibicao["data_prevista"].apply(data_br)
+    exibicao["Próximo passo"] = exibicao.apply(proximo_passo, axis=1)
+
+    colunas = [
+        "macroetapa",
+        "atividade",
+        "polo_base",
+        "prioridade",
+        "status",
+        "percentual",
+        "responsavel",
+        "Prazo",
+        "dependencia",
+        "Próximo passo",
+    ]
+
+    colunas = [c for c in colunas if c in exibicao.columns]
+
+    exibicao = exibicao[colunas]
 
     nomes = {
         "macroetapa": "Macroetapa",
         "atividade": "Atividade",
+        "polo_base": "Polo/Base",
         "prioridade": "Prioridade",
         "status": "Status",
+        "percentual": "%",
         "responsavel": "Responsável",
         "dependencia": "Dependência",
     }
 
+    exibicao = exibicao.rename(columns=nomes)
+
     st.dataframe(
-        x[colunas].rename(
-            columns=nomes
-        ),
+        exibicao,
         use_container_width=True,
         hide_index=True,
-        height=480,
+        height=520,
     )
 
 
-# ============================================================
-# EDITOR DE ATIVIDADE
-# ============================================================
+def cabecalho(titulo, subtitulo=None):
+    st.markdown(
+        f"<h1 class='titulo-pagina'>{titulo}</h1>",
+        unsafe_allow_html=True,
+    )
 
-def editor_atividade(df, chave):
-    if df.empty:
-        st.info(
-            "Nenhuma atividade disponível."
+    if subtitulo:
+        st.markdown(
+            f"<div class='subtitulo'>{subtitulo}</div>",
+            unsafe_allow_html=True,
         )
+
+
+def indicadores_frente(nome_frente):
+    if df_resumo.empty or "frente" not in df_resumo.columns:
         return
 
-    opcoes = {}
+    linha = df_resumo[df_resumo["frente"] == nome_frente]
 
-    for _, r in df.iterrows():
-        rotulo = (
-            f'{int(r["id"])} · '
-            f'{txt(r["atividade"])}'
-        )
-
-        opcoes[rotulo] = int(
-            r["id"]
-        )
-
-    escolha = st.selectbox(
-        "Selecione a atividade",
-        list(opcoes.keys()),
-        key=f"atividade_{chave}",
-    )
-
-    atividade_id = opcoes[
-        escolha
-    ]
-
-    r = df[
-        df["id"] == atividade_id
-    ].iloc[0]
-
-    status_atual = txt(
-        r.get("status")
-    )
-
-    prioridade_atual = txt(
-        r.get("prioridade")
-    )
-
-    with st.form(
-        f"form_atividade_{chave}_{atividade_id}"
-    ):
-
-        st.markdown(
-            f"### {txt(r.get('atividade'))}"
-        )
-
-        c1, c2, c3 = st.columns(
-            [1, 1, 1]
-        )
-
-        status = c1.selectbox(
-            "Status",
-            STATUS,
-            index=(
-                STATUS.index(status_atual)
-                if status_atual in STATUS
-                else 0
-            ),
-        )
-
-        prioridade = c2.selectbox(
-            "Prioridade",
-            PRIORIDADES,
-            index=(
-                PRIORIDADES.index(
-                    prioridade_atual
-                )
-                if prioridade_atual
-                in PRIORIDADES
-                else 2
-            ),
-        )
-
-        percentual = c3.number_input(
-            "Percentual",
-            min_value=0,
-            max_value=100,
-            value=inteiro(
-                r.get("percentual")
-            ),
-            step=5,
-        )
-
-        c1, c2 = st.columns(2)
-
-        responsavel = c1.text_input(
-            "Responsável",
-            value=txt(
-                r.get("responsavel")
-            ),
-        )
-
-        dependencia = c2.text_input(
-            "Dependência",
-            value=txt(
-                r.get("dependencia")
-            ),
-        )
-
-        c1, c2, c3 = st.columns(3)
-
-        inicio_atual = data_valor(
-            r.get("data_inicio")
-        )
-
-        prevista_atual = data_valor(
-            r.get("data_prevista")
-        )
-
-        conclusao_atual = data_valor(
-            r.get("data_conclusao")
-        )
-
-        data_inicio = c1.date_input(
-            "Data de início",
-            value=inicio_atual,
-            format="DD/MM/YYYY",
-        )
-
-        data_prevista = c2.date_input(
-            "Prazo",
-            value=prevista_atual,
-            format="DD/MM/YYYY",
-        )
-
-        data_conclusao = c3.date_input(
-            "Conclusão",
-            value=conclusao_atual,
-            format="DD/MM/YYYY",
-        )
-
-        pendencia = st.text_area(
-            "Pendência / Ação",
-            value=txt(
-                r.get("pendencia_acao")
-            ),
-            height=85,
-        )
-
-        proximo = st.text_area(
-            "Próximo passo",
-            value=txt(
-                r.get(
-                    "proximo_passo_manual"
-                )
-            ),
-            height=85,
-        )
-
-        criterio = st.text_area(
-            "Critério de aceite",
-            value=txt(
-                r.get("criterio_aceite")
-            ),
-            height=85,
-        )
-
-        evidencia = st.text_area(
-            "Evidência",
-            value=txt(
-                r.get("evidencia")
-            ),
-            height=85,
-        )
-
-        observacao = st.text_area(
-            "Observação",
-            value=txt(
-                r.get("observacao")
-            ),
-            height=100,
-        )
-
-        atualizado_por = st.text_input(
-            "Atualizado por",
-            value="Equipe Enorsul",
-        )
-
-        salvar = st.form_submit_button(
-            "Salvar alterações",
-            use_container_width=True,
-        )
-
-        if salvar:
-            payload = {
-                "status": status,
-                "prioridade": prioridade,
-                "percentual": int(
-                    percentual
-                ),
-                "responsavel": (
-                    responsavel or None
-                ),
-                "dependencia": (
-                    dependencia or None
-                ),
-                "data_inicio": data_api(
-                    data_inicio
-                ),
-                "data_prevista": data_api(
-                    data_prevista
-                ),
-                "data_conclusao": data_api(
-                    data_conclusao
-                ),
-                "pendencia_acao": (
-                    pendencia or None
-                ),
-                "proximo_passo_manual": (
-                    proximo or None
-                ),
-                "criterio_aceite": (
-                    criterio or None
-                ),
-                "evidencia": (
-                    evidencia or None
-                ),
-                "observacao": (
-                    observacao or None
-                ),
-                "atualizado_por": (
-                    atualizado_por
-                    or "Equipe Enorsul"
-                ),
-            }
-
-            ok, retorno = api_put(
-                f"/atividades/{atividade_id}",
-                payload,
-            )
-
-            if ok:
-                st.success(
-                    "Alterações gravadas no D1."
-                )
-
-                st.cache_data.clear()
-
-                st.rerun()
-
-            else:
-                st.error(
-                    retorno.get(
-                        "erro",
-                        "Não foi possível salvar."
-                    )
-                )
-
-
-# ============================================================
-# EDITOR PESSOAS
-# ============================================================
-
-def editor_pessoa():
-    if pessoas.empty:
-        st.info(
-            "Nenhuma pessoa cadastrada."
-        )
+    if linha.empty:
         return
 
-    opcoes = {}
+    linha = linha.iloc[0]
 
-    for _, r in pessoas.iterrows():
-        rotulo = (
-            f'{int(r["id"])} · '
-            f'{txt(r["nome"])}'
-        )
+    total = numero(linha.get("total"))
+    concluidos = numero(linha.get("concluidos"))
+    andamento = numero(linha.get("em_andamento"))
+    aqua = numero(linha.get("aguardando_aqua"))
+    nao_iniciado = numero(linha.get("nao_iniciados"))
+    cancelados = numero(linha.get("cancelados"))
 
-        opcoes[rotulo] = int(
-            r["id"]
-        )
+    pct = percentual_mobilizacao(total, concluidos, cancelados)
 
-    escolha = st.selectbox(
-        "Selecione o colaborador",
-        list(opcoes.keys()),
-        key="editor_pessoa",
-    )
+    c1, c2, c3, c4, c5 = st.columns(5)
 
-    pessoa_id = opcoes[
-        escolha
-    ]
-
-    r = pessoas[
-        pessoas["id"] == pessoa_id
-    ].iloc[0]
-
-    with st.form(
-        f"pessoa_{pessoa_id}"
-    ):
-
-        st.markdown(
-            f"### {txt(r.get('nome'))}"
-        )
-
-        c1, c2 = st.columns(2)
-
-        funcao = c1.text_input(
-            "Função",
-            value=txt(
-                r.get("funcao")
-            ),
-        )
-
-        situacao = c2.text_input(
-            "Situação",
-            value=txt(
-                r.get("situacao")
-            ),
-        )
-
-        c1, c2, c3, c4 = st.columns(4)
-
-        doc = c1.checkbox(
-            "Documentação enviada",
-            value=bool(
-                inteiro(
-                    r.get(
-                        "documentacao_enviada"
-                    )
-                )
-            ),
-        )
-
-        aprovado = c2.checkbox(
-            "Aprovado Aqua",
-            value=bool(
-                inteiro(
-                    r.get(
-                        "aprovado_aqua"
-                    )
-                )
-            ),
-        )
-
-        integrado = c3.checkbox(
-            "Integrado",
-            value=bool(
-                inteiro(
-                    r.get(
-                        "integrado"
-                    )
-                )
-            ),
-        )
-
-        campo = c4.checkbox(
-            "Liberado para campo",
-            value=bool(
-                inteiro(
-                    r.get(
-                        "liberado_campo"
-                    )
-                )
-            ),
-        )
-
-        adm_atual = data_valor(
-            r.get("data_admissao")
-        )
-
-        admissao = st.date_input(
-            "Data de admissão",
-            value=adm_atual,
-            format="DD/MM/YYYY",
-        )
-
-        observacao = st.text_area(
-            "Observação",
-            value=txt(
-                r.get("observacao")
-            ),
-        )
-
-        atualizado_por = st.text_input(
-            "Atualizado por",
-            value="Equipe Enorsul",
-            key=f"por_pessoa_{pessoa_id}",
-        )
-
-        salvar = st.form_submit_button(
-            "Salvar colaborador",
-            use_container_width=True,
-        )
-
-        if salvar:
-            payload = {
-                "funcao": (
-                    funcao or None
-                ),
-                "situacao": (
-                    situacao or None
-                ),
-                "documentacao_enviada": (
-                    1 if doc else 0
-                ),
-                "aprovado_aqua": (
-                    1 if aprovado else 0
-                ),
-                "integrado": (
-                    1 if integrado else 0
-                ),
-                "liberado_campo": (
-                    1 if campo else 0
-                ),
-                "data_admissao": data_api(
-                    admissao
-                ),
-                "observacao": (
-                    observacao or None
-                ),
-                "atualizado_por": (
-                    atualizado_por
-                    or "Equipe Enorsul"
-                ),
-            }
-
-            ok, retorno = api_put(
-                f"/pessoas/{pessoa_id}",
-                payload,
-            )
-
-            if ok:
-                st.success(
-                    "Colaborador atualizado."
-                )
-                st.cache_data.clear()
-                st.rerun()
-
-            else:
-                st.error(
-                    retorno.get(
-                        "erro",
-                        "Erro ao salvar."
-                    )
-                )
+    c1.metric("Mobilização", f"{pct:.1f}%")
+    c2.metric("Concluídos", concluidos)
+    c3.metric("Em andamento", andamento)
+    c4.metric("Aguardando Aqua", aqua)
+    c5.metric("Não iniciados", nao_iniciado)
 
 
-# ============================================================
-# EDITOR RAMPAGEM
-# ============================================================
-
-def editor_rampagem():
-    if rampagem.empty:
-        st.info(
-            "Nenhuma rampagem cadastrada."
-        )
+def grafico_macroetapas(base, chave):
+    if base.empty or "macroetapa" not in base.columns:
+        st.info("Sem dados de macroetapa.")
         return
+    b = base[~base["status"].isin(["Cancelado"])].copy()
+    b["macroetapa"] = b["macroetapa"].fillna("Sem macroetapa")
+    macros = sorted(b["macroetapa"].astype(str).unique().tolist())
+    if not macros:
+        return
+    for i in range(0, len(macros), 2):
+        cols = st.columns(2)
+        for j, macro in enumerate(macros[i:i+2]):
+            d = b[b["macroetapa"].astype(str) == macro]
+            cont = d["status"].value_counts().reindex(STATUS_VALIDOS[:-1], fill_value=0).reset_index()
+            cont.columns = ["Status", "Quantidade"]
+            cont = cont[cont["Quantidade"] > 0]
+            with cols[j]:
+                st.markdown(f"**{macro}**")
+                fig = px.pie(cont, names="Status", values="Quantidade", hole=.62)
+                fig.update_layout(height=290, margin=dict(l=5,r=5,t=10,b=5), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#F5F5F7", legend_title_text="")
+                fig.update_traces(textposition="inside", textinfo="value")
+                st.plotly_chart(fig, use_container_width=True, key=f"macro_{chave}_{i}_{j}")
+                abertos = int((~d["status"].isin(["Concluído","Cancelado"])).sum())
+                st.caption(f"{len(d)} atividades · {abertos} em aberto")
 
+
+def editor_atividade(base, nome_frente):
+    if base.empty:
+        st.info("Nenhuma atividade disponível para atualização.")
+        return
     opcoes = {}
+    for _, r in base.sort_values(["macroetapa","id"], na_position="last").iterrows():
+        label = f"{numero(r.get('id'))} — {texto(r.get('macroetapa'))} — {texto(r.get('atividade'))}"
+        opcoes[label] = r
+    escolha = st.selectbox("Atividade", list(opcoes), key=f"edit_atividade_{nome_frente}")
+    r = opcoes[escolha]
+    status_atual = texto(r.get("status"), "Não iniciado")
+    prioridade_atual = texto(r.get("prioridade"), "Média")
+    prioridades = ["Crítica","Alta","Média","Baixa"]
+    if prioridade_atual not in prioridades: prioridade_atual="Média"
+    with st.form(f"form_atividade_{nome_frente}_{numero(r.get('id'))}"):
+        c1,c2,c3=st.columns(3)
+        status=c1.selectbox("Status", STATUS_VALIDOS, index=STATUS_VALIDOS.index(status_atual) if status_atual in STATUS_VALIDOS else 0)
+        prioridade=c2.selectbox("Prioridade", prioridades, index=prioridades.index(prioridade_atual))
+        percentual=c3.number_input("Percentual",0,100,numero(r.get("percentual")),1)
+        responsavel=st.text_input("Responsável", value=texto(r.get("responsavel"),""))
+        d1,d2,d3=st.columns(3)
+        inicio=d1.date_input("Data de início", value=converter_data(r.get("data_inicio")))
+        prevista=d2.date_input("Data prevista", value=converter_data(r.get("data_prevista")))
+        conclusao=d3.date_input("Data de conclusão", value=converter_data(r.get("data_conclusao")))
+        dependencia=st.text_area("Dependência", value=texto(r.get("dependencia"),""))
+        pendencia=st.text_area("Pendência / Ação", value=texto(r.get("pendencia_acao"),""))
+        proximo=st.text_area("Próximo passo manual", value=texto(r.get("proximo_passo_manual"),""))
+        criterio=st.text_area("Critério de aceite", value=texto(r.get("criterio_aceite"),""))
+        evidencia=st.text_area("Evidência", value=texto(r.get("evidencia"),""))
+        observacao=st.text_area("Observação", value=texto(r.get("observacao"),""))
+        salvar=st.form_submit_button("Salvar alterações", use_container_width=True)
+    if salvar:
+        payload={"status":status,"prioridade":prioridade,"percentual":int(percentual),"responsavel":responsavel or None,"data_inicio":inicio.isoformat() if inicio else None,"data_prevista":prevista.isoformat() if prevista else None,"data_conclusao":conclusao.isoformat() if conclusao else None,"dependencia":dependencia or None,"pendencia_acao":pendencia or None,"proximo_passo_manual":proximo or None,"criterio_aceite":criterio or None,"evidencia":evidencia or None,"observacao":observacao or None,"atualizado_por":"Painel Mobilização"}
+        try:
+            salvar_api(f"atividades/{numero(r.get('id'))}",payload)
+            st.success("Atividade atualizada no D1 e registrada no histórico.")
+            limpar_recarregar()
+        except Exception as e: st.error(f"Não foi possível salvar: {e}")
 
-    for _, r in rampagem.iterrows():
-        rotulo = (
-            f'{int(r["id"])} · '
-            f'{txt(r.get("frente"))} · '
-            f'{txt(r.get("periodo"))}'
-        )
-
-        opcoes[rotulo] = int(
-            r["id"]
-        )
-
-    escolha = st.selectbox(
-        "Selecione a linha",
-        list(opcoes.keys()),
-        key="editor_rampagem",
-    )
-
-    rid = opcoes[
-        escolha
-    ]
-
-    r = rampagem[
-        rampagem["id"] == rid
-    ].iloc[0]
-
-    with st.form(
-        f"rampagem_{rid}"
-    ):
-
-        st.markdown(
-            f"### {txt(r.get('frente'))}"
-            f" · {txt(r.get('periodo'))}"
-        )
-
-        c1, c2 = st.columns(2)
-
-        equipes_plan = c1.number_input(
-            "Equipes planejadas",
-            min_value=0,
-            value=inteiro(
-                r.get(
-                    "equipes_planejadas"
-                )
-            ),
-        )
-
-        equipes_mob = c2.number_input(
-            "Equipes mobilizadas",
-            min_value=0,
-            value=inteiro(
-                r.get(
-                    "equipes_mobilizadas"
-                )
-            ),
-        )
-
-        c1, c2 = st.columns(2)
-
-        pessoas_plan = c1.number_input(
-            "Pessoas planejadas",
-            min_value=0,
-            value=inteiro(
-                r.get(
-                    "pessoas_planejadas"
-                )
-            ),
-        )
-
-        pessoas_mob = c2.number_input(
-            "Pessoas mobilizadas",
-            min_value=0,
-            value=inteiro(
-                r.get(
-                    "pessoas_mobilizadas"
-                )
-            ),
-        )
-
-        c1, c2 = st.columns(2)
-
-        veiculos_plan = c1.number_input(
-            "Veículos planejados",
-            min_value=0,
-            value=inteiro(
-                r.get(
-                    "veiculos_planejados"
-                )
-            ),
-        )
-
-        veiculos_mob = c2.number_input(
-            "Veículos mobilizados",
-            min_value=0,
-            value=inteiro(
-                r.get(
-                    "veiculos_mobilizados"
-                )
-            ),
-        )
-
-        observacao = st.text_area(
-            "Observação",
-            value=txt(
-                r.get("observacao")
-            ),
-        )
-
-        atualizado_por = st.text_input(
-            "Atualizado por",
-            value="Equipe Enorsul",
-            key=f"por_ramp_{rid}",
-        )
-
-        salvar = st.form_submit_button(
-            "Salvar rampagem",
-            use_container_width=True,
-        )
-
-        if salvar:
-            payload = {
-                "equipes_planejadas":
-                    int(equipes_plan),
-
-                "equipes_mobilizadas":
-                    int(equipes_mob),
-
-                "pessoas_planejadas":
-                    int(pessoas_plan),
-
-                "pessoas_mobilizadas":
-                    int(pessoas_mob),
-
-                "veiculos_planejados":
-                    int(veiculos_plan),
-
-                "veiculos_mobilizados":
-                    int(veiculos_mob),
-
-                "observacao":
-                    observacao or None,
-
-                "atualizado_por":
-                    atualizado_por
-                    or "Equipe Enorsul",
-            }
-
-            ok, retorno = api_put(
-                f"/rampagem/{rid}",
-                payload,
-            )
-
-            if ok:
-                st.success(
-                    "Rampagem atualizada."
-                )
-                st.cache_data.clear()
-                st.rerun()
-
-            else:
-                st.error(
-                    retorno.get(
-                        "erro",
-                        "Erro ao salvar."
-                    )
-                )
+def pagina_frente(nome_frente):
+    cabecalho(nome_frente, f"Acompanhamento da mobilização da frente de {nome_frente.lower()}.")
+    indicadores_frente(nome_frente)
+    if df_atividades.empty:
+        st.info("Não há atividades disponíveis."); return
+    base=df_atividades[df_atividades["frente"]==nome_frente].copy()
+    tab_visao,tab_ativ,tab_atualizar=st.tabs(["Visão da frente","Atividades","Atualizar"])
+    with tab_visao:
+        st.markdown("## Pontos de atenção")
+        criticos=pontos_criticos(base,6)
+        if criticos.empty: st.success("Nenhum ponto crítico identificado nesta frente.")
+        else:
+            for _,row in criticos.iterrows():
+                st.markdown(f"**{texto(row.get('atividade'))}** · {texto(row.get('status'))} · {texto(row.get('prioridade'))}  \nResponsável: {texto(row.get('responsavel'))} · Prazo: {data_br(row.get('data_prevista'))}")
+        st.markdown("## Análise por macroetapa")
+        grafico_macroetapas(base,f"frente_{nome_frente}")
+    with tab_ativ:
+        macroetapas=sorted([x for x in base["macroetapa"].dropna().unique().tolist() if str(x).strip()])
+        f1,f2,f3=st.columns(3)
+        macro=f1.selectbox("Macroetapa",["Todas"]+macroetapas,key=f"macro_filtro_{nome_frente}")
+        status=f2.selectbox("Status",["Todos"]+STATUS_VALIDOS,key=f"status_filtro_{nome_frente}")
+        prioridade=f3.selectbox("Prioridade",["Todas","Crítica","Alta","Média","Baixa"],key=f"prior_filtro_{nome_frente}")
+        filtrado=base.copy()
+        if macro!="Todas": filtrado=filtrado[filtrado["macroetapa"]==macro]
+        if status!="Todos": filtrado=filtrado[filtrado["status"]==status]
+        if prioridade!="Todas": filtrado=filtrado[filtrado["prioridade"]==prioridade]
+        tabela_atividades(filtrado)
+    with tab_atualizar:
+        st.caption("As alterações são gravadas no D1 pelo Worker e registradas no histórico.")
+        editor_atividade(base,nome_frente)
 
 
 # ============================================================
-# SIDEBAR
+# NAVEGAÇÃO
 # ============================================================
 
 with st.sidebar:
-
-    st.markdown(
-        "## ◆ Mobilização"
-    )
-
-    st.caption(
-        "Aqua Pernambuco · Enorsul"
-    )
+    st.markdown("## Mobilização")
+    st.caption("Aqua Pernambuco · Enorsul")
 
     pagina = st.radio(
         "Navegação",
@@ -1614,557 +638,265 @@ with st.sidebar:
 
     st.divider()
 
-    dias = (
-        GO_LIVE - date.today()
-    ).days
+    dias = (GO_LIVE - date.today()).days
 
-    st.metric(
-        "Go-Live",
-        "26/10/2026"
-    )
+    st.metric("Go-Live", "26/10/2026")
+    st.caption(f"{dias} dias para o início operacional")
 
-    st.caption(
-        f"{dias} dias para entrada"
-    )
-
-    if st.button(
-        "↻ Atualizar dados",
-        use_container_width=True,
-    ):
-        recarregar()
-
-    st.caption(
-        "Dados persistidos no Cloudflare D1"
-    )
-
+    if st.button("Atualizar dados", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
 # ============================================================
-# VISÃO GERAL
+# 1. VISÃO GERAL
 # ============================================================
 
 if pagina == "Visão Geral":
-
     cabecalho(
         "Mobilização | Aqua Pernambuco – Enorsul",
-        "Visão executiva consolidada da implantação.",
+        "Visão executiva consolidada da implantação dos contratos.",
     )
 
-    r = resumo_df(
-        atividades
-    )
+    dias = (GO_LIVE - date.today()).days
 
-    st.markdown(
-        """
-        <div class="hero">
-            <strong>
-                Painel operacional conectado ao D1.
-            </strong>
-            <br>
-            <span>
-                As alterações realizadas nas telas
-                operacionais atualizam esta visão.
-            </span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
 
-    c = st.columns(6)
+    c1.metric("Dias para Go-Live", dias)
+    c2.metric("% Mobilização", f"{totais['percentual']:.1f}%")
+    c3.metric("Concluídos", totais["concluidos"])
+    c4.metric("Em andamento", totais["em_andamento"])
+    c5.metric("Aguardando Aqua", totais["aguardando_aqua"])
+    c6.metric("Não iniciados", totais["nao_iniciados"])
 
-    metricas = [
-        (
-            "Dias para Go-Live",
-            dias
-        ),
-        (
+    st.markdown("## Análise por macroetapa")
+    filtro_macro = st.selectbox("Visão", ["Geral", "Leitura", "Cobrança", "Hidrometria"], key="macro_geral_filtro")
+    base_macro = df_atividades.copy()
+    if filtro_macro != "Geral" and not base_macro.empty:
+        base_macro = base_macro[base_macro["frente"] == filtro_macro]
+    grafico_macroetapas(base_macro, f"geral_{filtro_macro}")
+
+    st.markdown("## Mobilização por frente")
+
+    if df_resumo.empty:
+        st.warning("Resumo das frentes indisponível.")
+    else:
+        tabela = df_resumo.copy()
+
+        tabela["% Mobilização"] = tabela.apply(
+            lambda x: percentual_mobilizacao(
+                x.get("total"),
+                x.get("concluidos"),
+                x.get("cancelados"),
+            ),
+            axis=1,
+        )
+
+        tabela["% Mobilização"] = tabela["% Mobilização"].map(
+            lambda x: f"{x:.1f}%"
+        )
+
+        mapa = {
+            "frente": "Frente",
+            "total": "Total",
+            "concluidos": "Concluído",
+            "em_andamento": "Em andamento",
+            "aguardando_aqua": "Aguardando Aqua",
+            "nao_iniciados": "Não iniciado",
+            "cancelados": "Cancelado",
+        }
+
+        colunas = [
+            "frente",
+            "total",
+            "concluidos",
+            "em_andamento",
+            "aguardando_aqua",
+            "nao_iniciados",
             "% Mobilização",
-            f'{r["pct"]:.1f}%'
-        ),
-        (
-            "Concluídos",
-            r["concluidos"]
-        ),
-        (
-            "Em andamento",
-            r["andamento"]
-        ),
-        (
-            "Aguardando Aqua",
-            r["aqua"]
-        ),
-        (
-            "Não iniciados",
-            r["nao"]
-        ),
-    ]
-
-    for coluna, metrica in zip(
-        c,
-        metricas
-    ):
-        coluna.metric(
-            metrica[0],
-            metrica[1]
-        )
-
-    st.markdown(
-        "## Mobilização por frente"
-    )
-
-    linhas = []
-
-    for frente in [
-        "Leitura",
-        "Cobrança",
-        "Hidrometria",
-    ]:
-
-        z = resumo_df(
-            atividades[
-                atividades["frente"]
-                == frente
-            ]
-        )
-
-        linhas.append(
-            {
-                "Frente": frente,
-                "Total": z["total"],
-                "Concluído":
-                    z["concluidos"],
-                "Em andamento":
-                    z["andamento"],
-                "Aguardando Aqua":
-                    z["aqua"],
-                "Não iniciado":
-                    z["nao"],
-                "Mobilização":
-                    f'{z["pct"]:.1f}%',
-            }
-        )
-
-    st.dataframe(
-        pd.DataFrame(linhas),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    c1, c2 = st.columns(
-        [1.08, .92]
-    )
-
-    with c1:
-        st.markdown(
-            "## Pontos críticos"
-        )
-
-        cards_criticos(
-            atividades,
-            8
-        )
-
-    with c2:
-        st.markdown(
-            "## Distribuição atual"
-        )
-
-        grafico_status(
-            atividades
-        )
-
-        st.markdown(
-            "## Próximos passos"
-        )
-
-        proximos = (
-            pontos_criticos(
-                atividades,
-                5
-            )
-        )
-
-        for _, linha in proximos.iterrows():
-
-            acao = (
-                txt(
-                    linha.get(
-                        "proximo_passo_manual"
-                    )
-                )
-                or txt(
-                    linha.get(
-                        "pendencia_acao"
-                    )
-                )
-            )
-
-            st.markdown(
-                f"""
-                <div class="piano-card">
-                    <div class="piano-title">
-                        {txt(
-                            linha.get(
-                                "atividade"
-                            )
-                        )}
-                    </div>
-                    <div class="piano-body">
-                        {acao or "Sem próximo passo registrado."}
-                        <br>
-                        <b>Responsável:</b>
-                        {
-                            txt(
-                                linha.get(
-                                    "responsavel"
-                                )
-                            )
-                            or "—"
-                        }
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
-# ============================================================
-# LEITURA / COBRANÇA / HIDROMETRIA
-# ============================================================
-
-elif pagina in [
-    "Leitura",
-    "Cobrança",
-    "Hidrometria",
-]:
-
-    frente = pagina
-
-    df = atividades[
-        atividades["frente"]
-        == frente
-    ].copy()
-
-    cabecalho(
-        frente,
-        f"Acompanhamento operacional e atualização de {frente.lower()}.",
-    )
-
-    r = resumo_df(df)
-
-    c = st.columns(5)
-
-    metricas = [
-        (
-            "Mobilização",
-            f'{r["pct"]:.1f}%'
-        ),
-        (
-            "Concluídos",
-            r["concluidos"]
-        ),
-        (
-            "Em andamento",
-            r["andamento"]
-        ),
-        (
-            "Aguardando Aqua",
-            r["aqua"]
-        ),
-        (
-            "Não iniciados",
-            r["nao"]
-        ),
-    ]
-
-    for coluna, metrica in zip(
-        c,
-        metricas
-    ):
-        coluna.metric(
-            metrica[0],
-            metrica[1]
-        )
-
-    aba1, aba2, aba3 = st.tabs(
-        [
-            "Visão da frente",
-            "Atividades",
-            "Atualizar",
         ]
-    )
 
-    with aba1:
+        colunas = [c for c in colunas if c in tabela.columns]
 
-        st.markdown(
-            "## Pontos de atenção"
+        tabela = tabela[colunas].rename(columns=mapa)
+
+        st.dataframe(
+            tabela,
+            use_container_width=True,
+            hide_index=True,
         )
 
-        cards_criticos(
-            df,
-            7
-        )
+    esquerda, direita = st.columns([1.15, 1])
 
-        st.markdown(
-            "## Distribuição"
-        )
+    with esquerda:
+        st.markdown("## Pontos críticos")
 
-        grafico_status(
-            df
-        )
+        criticos = pontos_criticos(df_atividades, 8)
 
-    with aba2:
+        if criticos.empty:
+            st.success("Nenhum ponto crítico identificado.")
+        else:
+            for _, row in criticos.iterrows():
+                frente = texto(row.get("frente"))
+                atividade = texto(row.get("atividade"))
+                status = texto(row.get("status"))
+                prioridade = texto(row.get("prioridade"))
+                prazo = data_br(row.get("data_prevista"))
 
-        c1, c2, c3 = st.columns(3)
+                st.markdown(
+                    f"""
+                    <div class="card">
+                        <div class="card-titulo">{atividade}</div>
+                        <div class="card-texto">
+                            <b>{frente}</b> · {status} · {prioridade}<br>
+                            Prazo: {prazo}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-        macros = sorted(
-            [
-                str(v)
-                for v
-                in df["macroetapa"]
-                .dropna()
-                .unique()
-            ]
-        )
+    with direita:
+        st.markdown("## Próximos passos")
 
-        macro = c1.selectbox(
-            "Macroetapa",
-            ["Todas"] + macros,
-            key=f"macro_{frente}",
-        )
+        if df_atividades.empty:
+            st.info("Nenhum próximo passo disponível.")
+        else:
+            proximos = df_atividades[
+                ~df_atividades["status"].isin(
+                    ["Concluído", "Cancelado"]
+                )
+            ].copy()
 
-        status = c2.selectbox(
-            "Status",
-            ["Todos"] + STATUS,
-            key=f"status_{frente}",
-        )
+            proximos["proximo"] = proximos.apply(
+                proximo_passo, axis=1
+            )
 
-        prioridade = c3.selectbox(
-            "Prioridade",
-            ["Todas"] + PRIORIDADES,
-            key=f"prio_{frente}",
-        )
+            proximos = proximos[
+                proximos["proximo"] != "—"
+            ].copy()
 
-        filtrado = df.copy()
+            proximos = proximos.sort_values(
+                ["ordem_prioridade", "data_prevista_dt"],
+                na_position="last",
+            ).head(8)
 
-        if macro != "Todas":
-            filtrado = filtrado[
-                filtrado["macroetapa"]
-                == macro
-            ]
-
-        if status != "Todos":
-            filtrado = filtrado[
-                filtrado["status"]
-                == status
-            ]
-
-        if prioridade != "Todas":
-            filtrado = filtrado[
-                filtrado["prioridade"]
-                == prioridade
-            ]
-
-        tabela_atividades(
-            filtrado
-        )
-
-    with aba3:
-
-        st.info(
-            "Selecione uma atividade, altere somente "
-            "o que for necessário e salve. "
-            "A mudança será registrada no D1 e no histórico."
-        )
-
-        editor_atividade(
-            df,
-            frente
-        )
-
+            if proximos.empty:
+                st.info(
+                    "Não há próximos passos registrados na base."
+                )
+            else:
+                for _, row in proximos.iterrows():
+                    st.markdown(
+                        f"""
+                        <div class="card">
+                            <div class="card-titulo">
+                                {texto(row.get("atividade"))}
+                            </div>
+                            <div class="card-texto">
+                                {proximo_passo(row)}<br>
+                                <b>Responsável:</b>
+                                {texto(row.get("responsavel"))}
+                                &nbsp; · &nbsp;
+                                <b>Prazo:</b>
+                                {data_br(row.get("data_prevista"))}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
 # ============================================================
-# PESSOAS & ESTRUTURA
+# 2, 3 e 4. FRENTES
+# ============================================================
+
+elif pagina == "Leitura":
+    pagina_frente("Leitura")
+
+elif pagina == "Cobrança":
+    pagina_frente("Cobrança")
+
+elif pagina == "Hidrometria":
+    pagina_frente("Hidrometria")
+
+# ============================================================
+# 5. PESSOAS & ESTRUTURA
 # ============================================================
 
 elif pagina == "Pessoas & Estrutura":
-
     cabecalho(
         "Pessoas & Estrutura",
-        "Acompanhamento interno da mobilização de pessoal e estrutura.",
+        "Visão interna da mobilização de pessoas, bases e recursos.",
     )
 
-    total = len(
-        pessoas
+    total_pessoas = len(df_pessoas)
+
+    def soma_flag(campo):
+        if df_pessoas.empty or campo not in df_pessoas.columns:
+            return 0
+
+        return int(
+            pd.to_numeric(
+                df_pessoas[campo], errors="coerce"
+            ).fillna(0).sum()
+        )
+
+    doc = soma_flag("documentacao_enviada")
+    aprovados = soma_flag("aprovado_aqua")
+    integrados = soma_flag("integrado")
+    campo = soma_flag("liberado_campo")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    c1.metric("Pessoas cadastradas", total_pessoas)
+    c2.metric("Documentação enviada", doc)
+    c3.metric("Aprovados Aqua", aprovados)
+    c4.metric("Integrados", integrados)
+    c5.metric("Liberados para campo", campo)
+
+    st.markdown("## Funil de mobilização")
+
+    funil = pd.DataFrame(
+        {
+            "Etapa": [
+                "Pessoas cadastradas",
+                "Documentação enviada",
+                "Aprovados Aqua",
+                "Integrados",
+                "Liberados para campo",
+            ],
+            "Quantidade": [
+                total_pessoas,
+                doc,
+                aprovados,
+                integrados,
+                campo,
+            ],
+        }
     )
 
-    if pessoas.empty:
-        doc = aprovado = integrado = campo = 0
-    else:
-        doc = int(
-            (
-                pessoas[
-                    "documentacao_enviada"
-                ].fillna(0)
-                .astype(int)
-                == 1
-            ).sum()
-        )
-
-        aprovado = int(
-            (
-                pessoas[
-                    "aprovado_aqua"
-                ].fillna(0)
-                .astype(int)
-                == 1
-            ).sum()
-        )
-
-        integrado = int(
-            (
-                pessoas[
-                    "integrado"
-                ].fillna(0)
-                .astype(int)
-                == 1
-            ).sum()
-        )
-
-        campo = int(
-            (
-                pessoas[
-                    "liberado_campo"
-                ].fillna(0)
-                .astype(int)
-                == 1
-            ).sum()
-        )
-
-    c = st.columns(5)
-
-    for coluna, metrica in zip(
-        c,
-        [
-            ("Cadastrados", total),
-            ("Docs enviados", doc),
-            ("Aprovados Aqua", aprovado),
-            ("Integrados", integrado),
-            ("Liberados campo", campo),
-        ],
-    ):
-        coluna.metric(
-            metrica[0],
-            metrica[1]
-        )
-
-    a1, a2, a3 = st.tabs(
-        [
-            "Visão quantitativa",
-            "Base interna",
-            "Atualizar pessoa",
-        ]
+    st.bar_chart(
+        funil.set_index("Etapa"),
+        horizontal=True,
     )
 
-    with a1:
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Pessoas", "Polos e Bases", "Recursos", "Atualizar"]
+    )
 
-        if not pessoas.empty:
-
-            linhas = []
-
-            for frente in [
-                "Leitura",
-                "Cobrança",
-                "Hidrometria",
-            ]:
-
-                x = pessoas[
-                    pessoas["frente"]
-                    == frente
-                ]
-
-                linhas.append(
-                    {
-                        "Frente": frente,
-                        "Cadastrados":
-                            len(x),
-
-                        "Documentação enviada":
-                            int(
-                                (
-                                    x[
-                                        "documentacao_enviada"
-                                    ]
-                                    .fillna(0)
-                                    .astype(int)
-                                    == 1
-                                ).sum()
-                            ),
-
-                        "Aprovados Aqua":
-                            int(
-                                (
-                                    x[
-                                        "aprovado_aqua"
-                                    ]
-                                    .fillna(0)
-                                    .astype(int)
-                                    == 1
-                                ).sum()
-                            ),
-
-                        "Integrados":
-                            int(
-                                (
-                                    x[
-                                        "integrado"
-                                    ]
-                                    .fillna(0)
-                                    .astype(int)
-                                    == 1
-                                ).sum()
-                            ),
-
-                        "Liberados":
-                            int(
-                                (
-                                    x[
-                                        "liberado_campo"
-                                    ]
-                                    .fillna(0)
-                                    .astype(int)
-                                    == 1
-                                ).sum()
-                            ),
-                    }
-                )
-
-            st.dataframe(
-                pd.DataFrame(
-                    linhas
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    with a2:
-
-        st.warning(
-            "Base nominal de uso interno. "
-            "Ela não aparece no Modo Reunião."
+    with tab1:
+        st.caption(
+            "Base nominal de uso interno. Não é exibida no Modo Reunião."
         )
 
-        if pessoas.empty:
-            st.info(
-                "Nenhuma pessoa cadastrada."
-            )
-
+        if df_pessoas.empty:
+            st.info("Nenhuma pessoa cadastrada.")
         else:
-            mostrar = pessoas.copy()
+            pessoas = df_pessoas.copy()
 
             colunas = [
+                "nome",
                 "frente",
                 "polo_base",
-                "nome",
                 "funcao",
                 "situacao",
                 "documentacao_enviada",
@@ -2172,528 +904,599 @@ elif pagina == "Pessoas & Estrutura":
                 "integrado",
                 "liberado_campo",
                 "data_admissao",
+                "observacao",
             ]
 
             colunas = [
-                c
-                for c in colunas
-                if c in mostrar.columns
+                c for c in colunas if c in pessoas.columns
             ]
 
-            st.dataframe(
-                mostrar[colunas],
-                use_container_width=True,
-                hide_index=True,
-                height=500,
+            pessoas = pessoas[colunas].rename(
+                columns={
+                    "nome": "Nome",
+                    "frente": "Frente",
+                    "polo_base": "Polo/Base",
+                    "funcao": "Função",
+                    "situacao": "Situação",
+                    "documentacao_enviada": "Documentação enviada",
+                    "aprovado_aqua": "Aprovado Aqua",
+                    "integrado": "Integrado",
+                    "liberado_campo": "Liberado para campo",
+                    "data_admissao": "Admissão",
+                    "observacao": "Observação",
+                }
             )
 
-    with a3:
+            st.dataframe(
+                pessoas,
+                use_container_width=True,
+                hide_index=True,
+                height=460,
+            )
 
-        editor_pessoa()
+    with tab2:
+        if df_polos.empty:
+            st.info("Nenhum polo/base cadastrado.")
+        else:
+            polos = df_polos.copy()
 
-    st.markdown(
-        "## Polos / Bases"
-    )
+            colunas = [
+                "nome",
+                "tipo",
+                "regiao",
+                "municipio_referencia",
+                "observacao",
+            ]
 
-    if polos.empty:
-        st.info(
-            "Nenhum polo/base cadastrado."
-        )
+            colunas = [
+                c for c in colunas if c in polos.columns
+            ]
 
-    else:
-        st.dataframe(
-            polos,
-            use_container_width=True,
-            hide_index=True,
-        )
+            polos = polos[colunas].rename(
+                columns={
+                    "nome": "Polo/Base",
+                    "tipo": "Tipo",
+                    "regiao": "Região",
+                    "municipio_referencia": "Município de referência",
+                    "observacao": "Observação",
+                }
+            )
 
-    if not recursos.empty:
+            st.dataframe(
+                polos,
+                use_container_width=True,
+                hide_index=True,
+            )
 
-        st.markdown(
-            "## Recursos"
-        )
+    with tab3:
+        if df_recursos.empty:
+            st.info(
+                "Nenhum recurso cadastrado na base neste momento."
+            )
+        else:
+            recursos = df_recursos.copy()
 
-        st.dataframe(
-            recursos,
-            use_container_width=True,
-            hide_index=True,
-        )
+            colunas = [
+                "frente",
+                "polo_base",
+                "categoria",
+                "descricao",
+                "identificacao",
+                "quantidade_planejada",
+                "quantidade_disponivel",
+                "status",
+                "responsavel",
+                "observacao",
+            ]
 
+            colunas = [
+                c for c in colunas if c in recursos.columns
+            ]
+
+            recursos = recursos[colunas].rename(
+                columns={
+                    "frente": "Frente",
+                    "polo_base": "Polo/Base",
+                    "categoria": "Categoria",
+                    "descricao": "Descrição",
+                    "identificacao": "Identificação",
+                    "quantidade_planejada": "Planejado",
+                    "quantidade_disponivel": "Disponível",
+                    "status": "Status",
+                    "responsavel": "Responsável",
+                    "observacao": "Observação",
+                }
+            )
+
+            st.dataframe(
+                recursos,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+
+    with tab4:
+        st.caption("Atualização individual com gravação no D1.")
+        if df_pessoas.empty:
+            st.info("Nenhuma pessoa cadastrada.")
+        else:
+            opts={f"{numero(r.get('id'))} — {texto(r.get('nome'))} — {texto(r.get('frente'))}":r for _,r in df_pessoas.sort_values("nome").iterrows()}
+            sel=st.selectbox("Colaborador",list(opts),key="edit_pessoa")
+            r=opts[sel]
+            with st.form(f"form_pessoa_{numero(r.get('id'))}"):
+                funcao=st.text_input("Função",value=texto(r.get("funcao"),""))
+                situacao=st.text_input("Situação",value=texto(r.get("situacao"),""))
+                c1,c2,c3,c4=st.columns(4)
+                doc=c1.checkbox("Documentação enviada",value=bool(numero(r.get("documentacao_enviada"))))
+                apr=c2.checkbox("Aprovado Aqua",value=bool(numero(r.get("aprovado_aqua"))))
+                integ=c3.checkbox("Integrado",value=bool(numero(r.get("integrado"))))
+                lib=c4.checkbox("Liberado campo",value=bool(numero(r.get("liberado_campo"))))
+                adm=st.date_input("Data de admissão",value=converter_data(r.get("data_admissao")))
+                obs=st.text_area("Observação",value=texto(r.get("observacao"),""))
+                ok=st.form_submit_button("Salvar colaborador",use_container_width=True)
+            if ok:
+                payload={"funcao":funcao or None,"situacao":situacao or None,"documentacao_enviada":1 if doc else 0,"aprovado_aqua":1 if apr else 0,"integrado":1 if integ else 0,"liberado_campo":1 if lib else 0,"data_admissao":adm.isoformat() if adm else None,"observacao":obs or None,"atualizado_por":"Painel Mobilização"}
+                try:
+                    salvar_api(f"pessoas/{numero(r.get('id'))}",payload); st.success("Colaborador atualizado no D1."); limpar_recarregar()
+                except Exception as e: st.error(f"Não foi possível salvar: {e}")
 
 # ============================================================
-# CRONOGRAMA & RAMPAGEM
+# 6. CRONOGRAMA & RAMPAGEM
 # ============================================================
 
 elif pagina == "Cronograma & Rampagem":
-
     cabecalho(
         "Cronograma & Rampagem",
-        "Prazos, dependências e evolução da capacidade planejada.",
+        "Prazos da implantação e evolução planejada versus mobilizada.",
     )
 
-    a1, a2, a3 = st.tabs(
-        [
-            "Cronograma",
-            "Rampagem",
-            "Atualizar rampagem",
-        ]
-    )
+    tab1, tab2, tab3 = st.tabs(["Cronograma", "Rampagem", "Atualizar"])
 
-    with a1:
+    with tab1:
+        if df_atividades.empty:
+            st.info("Nenhuma atividade cadastrada.")
+        else:
+            cronograma = df_atividades.copy()
 
-        c1, c2 = st.columns(2)
+            f1, f2 = st.columns(2)
 
-        frente = c1.selectbox(
-            "Frente",
-            [
-                "Todas",
-                "Leitura",
-                "Cobrança",
-                "Hidrometria",
-            ],
-            key="cron_frente",
-        )
-
-        situacao = c2.selectbox(
-            "Situação",
-            [
-                "Todas",
-                "Atrasadas",
-                "Prazo próximo",
-                "Aguardando Aqua",
-                "Em aberto",
-                "Concluídas",
-            ],
-            key="cron_situacao",
-        )
-
-        x = atividades.copy()
-
-        if frente != "Todas":
-            x = x[
-                x["frente"]
-                == frente
-            ]
-
-        if situacao == "Atrasadas":
-            x = x[
-                x["atrasada"]
-            ]
-
-        elif situacao == "Prazo próximo":
-            x = x[
-                x["prazo_proximo"]
-            ]
-
-        elif (
-            situacao
-            == "Aguardando Aqua"
-        ):
-            x = x[
-                x["status"]
-                == "Aguardando Aqua"
-            ]
-
-        elif situacao == "Em aberto":
-            x = x[
-                ~x["status"].isin(
-                    [
-                        "Concluído",
-                        "Cancelado",
-                    ]
-                )
-            ]
-
-        elif situacao == "Concluídas":
-            x = x[
-                x["status"]
-                == "Concluído"
-            ]
-
-        tabela_atividades(
-            x
-        )
-
-    with a2:
-
-        if rampagem.empty:
-            st.info(
-                "Nenhuma rampagem cadastrada."
+            frente = f1.selectbox(
+                "Frente",
+                ["Todas"]
+                + sorted(
+                    cronograma["frente"]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                ),
+                key="cron_frente",
             )
 
-        else:
+            situacao = f2.selectbox(
+                "Situação",
+                [
+                    "Todas",
+                    "Atrasadas",
+                    "Prazo próximo",
+                    "Aguardando Aqua",
+                    "Em aberto",
+                    "Concluídas",
+                ],
+                key="cron_situacao",
+            )
+
+            if frente != "Todas":
+                cronograma = cronograma[
+                    cronograma["frente"] == frente
+                ]
+
+            if situacao == "Atrasadas":
+                cronograma = cronograma[cronograma["atrasada"]]
+
+            elif situacao == "Prazo próximo":
+                cronograma = cronograma[
+                    cronograma["prazo_proximo"]
+                ]
+
+            elif situacao == "Aguardando Aqua":
+                cronograma = cronograma[
+                    cronograma["status"] == "Aguardando Aqua"
+                ]
+
+            elif situacao == "Em aberto":
+                cronograma = cronograma[
+                    ~cronograma["status"].isin(
+                        ["Concluído", "Cancelado"]
+                    )
+                ]
+
+            elif situacao == "Concluídas":
+                cronograma = cronograma[
+                    cronograma["status"] == "Concluído"
+                ]
+
+            cronograma["Início"] = cronograma[
+                "data_inicio"
+            ].apply(data_br)
+
+            cronograma["Prazo"] = cronograma[
+                "data_prevista"
+            ].apply(data_br)
+
+            cronograma["Conclusão"] = cronograma[
+                "data_conclusao"
+            ].apply(data_br)
+
+            colunas = [
+                "frente",
+                "macroetapa",
+                "atividade",
+                "Início",
+                "Prazo",
+                "Conclusão",
+                "dependencia",
+                "prioridade",
+                "status",
+                "responsavel",
+            ]
+
+            colunas = [
+                c for c in colunas if c in cronograma.columns
+            ]
+
+            cronograma = cronograma[colunas].rename(
+                columns={
+                    "frente": "Frente",
+                    "macroetapa": "Macroetapa",
+                    "atividade": "Atividade",
+                    "dependencia": "Dependência",
+                    "prioridade": "Prioridade",
+                    "status": "Status",
+                    "responsavel": "Responsável",
+                }
+            )
+
             st.dataframe(
-                rampagem,
+                cronograma,
+                use_container_width=True,
+                hide_index=True,
+                height=550,
+            )
+
+    with tab2:
+        if df_rampagem.empty:
+            st.info("Nenhuma rampagem cadastrada.")
+        else:
+            ramp = df_rampagem.copy()
+
+            for campo in [
+                "equipes_planejadas",
+                "equipes_mobilizadas",
+                "pessoas_planejadas",
+                "pessoas_mobilizadas",
+                "veiculos_planejados",
+                "veiculos_mobilizados",
+            ]:
+                if campo not in ramp.columns:
+                    ramp[campo] = 0
+
+                ramp[campo] = pd.to_numeric(
+                    ramp[campo], errors="coerce"
+                ).fillna(0)
+
+            frentes_ramp = sorted(
+                ramp["frente"].dropna().unique().tolist()
+            )
+
+            filtro_frente = st.selectbox(
+                "Frente",
+                ["Todas"] + frentes_ramp,
+                key="ramp_frente",
+            )
+
+            if filtro_frente != "Todas":
+                ramp = ramp[ramp["frente"] == filtro_frente]
+
+            c1, c2, c3 = st.columns(3)
+
+            c1.metric(
+                "Equipes planejadas",
+                int(ramp["equipes_planejadas"].sum()),
+            )
+
+            c2.metric(
+                "Equipes mobilizadas",
+                int(ramp["equipes_mobilizadas"].sum()),
+            )
+
+            c3.metric(
+                "Veículos planejados",
+                int(ramp["veiculos_planejados"].sum()),
+            )
+
+            exibicao = ramp.copy()
+
+            colunas = [
+                "frente",
+                "polo_base",
+                "periodo",
+                "equipes_planejadas",
+                "equipes_mobilizadas",
+                "pessoas_planejadas",
+                "pessoas_mobilizadas",
+                "veiculos_planejados",
+                "veiculos_mobilizados",
+                "observacao",
+            ]
+
+            colunas = [
+                c for c in colunas if c in exibicao.columns
+            ]
+
+            exibicao = exibicao[colunas].rename(
+                columns={
+                    "frente": "Frente",
+                    "polo_base": "Polo/Base",
+                    "periodo": "Período",
+                    "equipes_planejadas": "Equipes planejadas",
+                    "equipes_mobilizadas": "Equipes mobilizadas",
+                    "pessoas_planejadas": "Pessoas planejadas",
+                    "pessoas_mobilizadas": "Pessoas mobilizadas",
+                    "veiculos_planejados": "Veículos planejados",
+                    "veiculos_mobilizados": "Veículos mobilizados",
+                    "observacao": "Observação",
+                }
+            )
+
+            st.dataframe(
+                exibicao,
                 use_container_width=True,
                 hide_index=True,
             )
 
-            graf = rampagem[
-                rampagem["frente"].isin(
-                    [
-                        "Cobrança",
-                        "Hidrometria",
+            if "periodo" in ramp.columns:
+                grafico = (
+                    ramp.groupby("periodo", as_index=False)[
+                        [
+                            "equipes_planejadas",
+                            "equipes_mobilizadas",
+                        ]
                     ]
-                )
-            ].copy()
-
-            if not graf.empty:
-
-                fig = go.Figure()
-
-                for frente in [
-                    "Cobrança",
-                    "Hidrometria",
-                ]:
-
-                    x = graf[
-                        graf["frente"]
-                        == frente
-                    ]
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=x["periodo"],
-                            y=x[
-                                "equipes_planejadas"
-                            ],
-                            mode="lines+markers",
-                            name=frente,
-                        )
-                    )
-
-                fig.update_layout(
-                    height=400,
-                    paper_bgcolor=(
-                        "rgba(0,0,0,0)"
-                    ),
-                    plot_bgcolor=(
-                        "rgba(0,0,0,0)"
-                    ),
-                    font_color="#dddddf",
-                    legend=dict(
-                        orientation="h"
-                    ),
-                    xaxis=dict(
-                        gridcolor="#202026"
-                    ),
-                    yaxis=dict(
-                        gridcolor="#202026",
-                        title=(
-                            "Equipes planejadas"
-                        ),
-                    ),
+                    .sum()
+                    .set_index("periodo")
                 )
 
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    config={
-                        "displayModeBar":
-                            False
-                    },
-                )
+                st.markdown("### Equipes — planejado x mobilizado")
 
-    with a3:
+                st.line_chart(grafico)
 
-        editor_rampagem()
 
+    with tab3:
+        st.caption("Atualize a rampagem realizada. Os valores são gravados no D1.")
+        if df_rampagem.empty:
+            st.info("Nenhuma rampagem cadastrada.")
+        else:
+            opts={f"{numero(r.get('id'))} — {texto(r.get('frente'))} — {texto(r.get('periodo'))} — {texto(r.get('polo_base'))}":r for _,r in df_rampagem.iterrows()}
+            sel=st.selectbox("Registro de rampagem",list(opts),key="edit_ramp")
+            r=opts[sel]
+            with st.form(f"form_ramp_{numero(r.get('id'))}"):
+                c1,c2=st.columns(2)
+                ep=c1.number_input("Equipes planejadas",0,value=numero(r.get("equipes_planejadas")),step=1)
+                em=c2.number_input("Equipes mobilizadas",0,value=numero(r.get("equipes_mobilizadas")),step=1)
+                c3,c4=st.columns(2)
+                pp=c3.number_input("Pessoas planejadas",0,value=numero(r.get("pessoas_planejadas")),step=1)
+                pm=c4.number_input("Pessoas mobilizadas",0,value=numero(r.get("pessoas_mobilizadas")),step=1)
+                c5,c6=st.columns(2)
+                vp=c5.number_input("Veículos planejados",0,value=numero(r.get("veiculos_planejados")),step=1)
+                vm=c6.number_input("Veículos mobilizados",0,value=numero(r.get("veiculos_mobilizados")),step=1)
+                obs=st.text_area("Observação",value=texto(r.get("observacao"),""))
+                ok=st.form_submit_button("Salvar rampagem",use_container_width=True)
+            if ok:
+                payload={"equipes_planejadas":int(ep),"equipes_mobilizadas":int(em),"pessoas_planejadas":int(pp),"pessoas_mobilizadas":int(pm),"veiculos_planejados":int(vp),"veiculos_mobilizados":int(vm),"observacao":obs or None,"atualizado_por":"Painel Mobilização"}
+                try:
+                    salvar_api(f"rampagem/{numero(r.get('id'))}",payload); st.success("Rampagem atualizada no D1."); limpar_recarregar()
+                except Exception as e: st.error(f"Não foi possível salvar: {e}")
 
 # ============================================================
-# MODO REUNIÃO
+# 7. MODO REUNIÃO
 # ============================================================
 
 elif pagina == "Modo Reunião":
-
     cabecalho(
         "Modo Reunião",
         "Visão executiva para acompanhamento com a Aqua Pernambuco.",
     )
 
-    r = resumo_df(
-        atividades
-    )
-
-    c = st.columns(4)
-
-    for coluna, metrica in zip(
-        c,
-        [
-            (
-                "Dias para Go-Live",
-                dias
-            ),
-            (
-                "Mobilização geral",
-                f'{r["pct"]:.1f}%'
-            ),
-            (
-                "Concluídos",
-                r["concluidos"]
-            ),
-            (
-                "Aguardando Aqua",
-                r["aqua"]
-            ),
-        ],
-    ):
-        coluna.metric(
-            metrica[0],
-            metrica[1]
-        )
-
     st.markdown(
-        "## Mobilização das frentes"
+        "<div class='modo-reuniao'>"
+        "Somente informações consolidadas. "
+        "A base nominal de colaboradores não é exibida."
+        "</div>",
+        unsafe_allow_html=True,
     )
 
-    for frente in [
-        "Leitura",
-        "Cobrança",
-        "Hidrometria",
-    ]:
+    dias = (GO_LIVE - date.today()).days
 
-        z = resumo_df(
-            atividades[
-                atividades["frente"]
-                == frente
-            ]
-        )
+    c1, c2, c3, c4 = st.columns(4)
 
-        st.markdown(
-            f"**{frente} · "
-            f'{z["pct"]:.1f}%**'
-        )
+    c1.metric("Dias para Go-Live", dias)
+    c2.metric("Mobilização geral", f"{totais['percentual']:.1f}%")
+    c3.metric("Atividades concluídas", totais["concluidos"])
+    c4.metric("Pontos aguardando Aqua", totais["aguardando_aqua"])
 
-        st.progress(
-            min(
-                z["pct"] / 100,
-                1.0
-            )
-        )
+    st.markdown("## Mobilização das frentes")
 
-        st.caption(
-            f'{z["concluidos"]} de '
-            f'{z["total"]} concluídas · '
-            f'{z["andamento"]} em andamento · '
-            f'{z["aqua"]} aguardando Aqua'
-        )
+    if not df_resumo.empty:
+        for _, row in df_resumo.iterrows():
+            frente = texto(row.get("frente"))
+            total = numero(row.get("total"))
+            concluidos = numero(row.get("concluidos"))
+            cancelados = numero(row.get("cancelados"))
 
-    c1, c2 = st.columns(2)
-
-    with c1:
-
-        st.markdown(
-            "## Pontos que exigem ação"
-        )
-
-        cards_criticos(
-            atividades,
-            8
-        )
-
-    with c2:
-
-        st.markdown(
-            "## Próximos passos"
-        )
-
-        x = pontos_criticos(
-            atividades,
-            8
-        )
-
-        for _, linha in x.iterrows():
-
-            acao = (
-                txt(
-                    linha.get(
-                        "proximo_passo_manual"
-                    )
-                )
-                or txt(
-                    linha.get(
-                        "pendencia_acao"
-                    )
-                )
+            pct = percentual_mobilizacao(
+                total, concluidos, cancelados
             )
 
-            st.markdown(
-                f"""
-                <div class="piano-card">
-                    <div class="piano-title">
-                        {
-                            txt(
-                                linha.get(
-                                    "atividade"
-                                )
-                            )
-                        }
+            st.markdown(f"### {frente}")
+            st.progress(min(max(pct / 100, 0), 1))
+            st.caption(
+                f"{concluidos} de "
+                f"{max(total - cancelados, 0)} atividades concluídas "
+                f"· {pct:.1f}%"
+            )
+
+    esquerda, direita = st.columns(2)
+
+    with esquerda:
+        st.markdown("## Pontos que exigem ação")
+
+        criticos = pontos_criticos(df_atividades, 8)
+
+        if criticos.empty:
+            st.success("Nenhum ponto crítico identificado.")
+        else:
+            for _, row in criticos.iterrows():
+                st.markdown(
+                    f"""
+                    <div class="card">
+                        <div class="card-titulo">
+                            {texto(row.get("atividade"))}
+                        </div>
+                        <div class="card-texto">
+                            <b>{texto(row.get("frente"))}</b>
+                            · {texto(row.get("status"))}<br>
+                            Responsável:
+                            {texto(row.get("responsavel"))}
+                            · Prazo:
+                            {data_br(row.get("data_prevista"))}
+                        </div>
                     </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-                    <div class="piano-body">
-                        {
-                            acao
-                            or
-                            "Sem próximo passo registrado."
-                        }
-                        <br>
-                        <b>Responsável:</b>
-                        {
-                            txt(
-                                linha.get(
-                                    "responsavel"
-                                )
-                            )
-                            or "—"
-                        }
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+    with direita:
+        st.markdown("## Próximos passos")
+
+        if not df_atividades.empty:
+            proximos = df_atividades[
+                ~df_atividades["status"].isin(
+                    ["Concluído", "Cancelado"]
+                )
+            ].copy()
+
+            proximos["proximo"] = proximos.apply(
+                proximo_passo, axis=1
             )
 
-    st.markdown(
-        "## Pessoas · visão quantitativa"
+            proximos = proximos[
+                proximos["proximo"] != "—"
+            ].sort_values(
+                ["ordem_prioridade", "data_prevista_dt"],
+                na_position="last",
+            ).head(8)
+
+            if proximos.empty:
+                st.info("Nenhum próximo passo registrado.")
+            else:
+                for _, row in proximos.iterrows():
+                    st.markdown(
+                        f"""
+                        <div class="card">
+                            <div class="card-titulo">
+                                {texto(row.get("frente"))}
+                                · {texto(row.get("atividade"))}
+                            </div>
+                            <div class="card-texto">
+                                {proximo_passo(row)}<br>
+                                <b>Responsável:</b>
+                                {texto(row.get("responsavel"))}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+    st.markdown("## Macroetapas — visão executiva")
+    grafico_macroetapas(df_atividades, "reuniao")
+
+    st.markdown("## Pessoas — visão quantitativa")
+
+    total_pessoas = len(df_pessoas)
+
+    def reuniao_flag(campo):
+        if df_pessoas.empty or campo not in df_pessoas.columns:
+            return 0
+
+        return int(
+            pd.to_numeric(
+                df_pessoas[campo], errors="coerce"
+            ).fillna(0).sum()
+        )
+
+    p1, p2, p3, p4 = st.columns(4)
+
+    p1.metric("Cadastrados", total_pessoas)
+    p2.metric(
+        "Documentação enviada",
+        reuniao_flag("documentacao_enviada"),
+    )
+    p3.metric(
+        "Aprovados Aqua",
+        reuniao_flag("aprovado_aqua"),
+    )
+    p4.metric(
+        "Liberados para campo",
+        reuniao_flag("liberado_campo"),
     )
 
-    if pessoas.empty:
-        total_pessoas = 0
-        cobranca = 0
-        hidro = 0
-        leitura = 0
-        liberados = 0
+    st.markdown("## Rampagem")
 
+    if df_rampagem.empty:
+        st.info("Nenhuma rampagem cadastrada.")
     else:
-        total_pessoas = len(
-            pessoas
-        )
-
-        leitura = int(
-            (
-                pessoas["frente"]
-                == "Leitura"
-            ).sum()
-        )
-
-        cobranca = int(
-            (
-                pessoas["frente"]
-                == "Cobrança"
-            ).sum()
-        )
-
-        hidro = int(
-            (
-                pessoas["frente"]
-                == "Hidrometria"
-            ).sum()
-        )
-
-        liberados = int(
-            (
-                pessoas[
-                    "liberado_campo"
-                ]
-                .fillna(0)
-                .astype(int)
-                == 1
-            ).sum()
-        )
-
-    c = st.columns(5)
-
-    for coluna, metrica in zip(
-        c,
-        [
-            (
-                "Cadastrados",
-                total_pessoas
-            ),
-            (
-                "Leitura",
-                leitura
-            ),
-            (
-                "Cobrança",
-                cobranca
-            ),
-            (
-                "Hidrometria",
-                hidro
-            ),
-            (
-                "Liberados campo",
-                liberados
-            ),
-        ],
-    ):
-        coluna.metric(
-            metrica[0],
-            metrica[1]
-        )
-
-    st.markdown(
-        "## Alterações recentes"
-    )
-
-    if historico.empty:
-
-        st.caption(
-            "Ainda não existem alterações "
-            "registradas no histórico."
-        )
-
-    else:
-
-        h = historico.copy()
-
-        if "alterado_em" in h.columns:
-            h["alterado_em"] = (
-                pd.to_datetime(
-                    h["alterado_em"],
-                    errors="coerce"
-                )
-                .dt.strftime(
-                    "%d/%m/%Y %H:%M"
-                )
-            )
+        ramp_reuniao = df_rampagem.copy()
 
         colunas = [
-            "tabela",
-            "registro_id",
-            "campo",
-            "valor_anterior",
-            "valor_novo",
-            "alterado_por",
-            "alterado_em",
+            "frente",
+            "periodo",
+            "equipes_planejadas",
+            "equipes_mobilizadas",
+            "veiculos_planejados",
+            "veiculos_mobilizados",
         ]
 
         colunas = [
-            c
-            for c in colunas
-            if c in h.columns
+            c for c in colunas if c in ramp_reuniao.columns
         ]
+
+        ramp_reuniao = ramp_reuniao[colunas].rename(
+            columns={
+                "frente": "Frente",
+                "periodo": "Período",
+                "equipes_planejadas": "Equipes planejadas",
+                "equipes_mobilizadas": "Equipes mobilizadas",
+                "veiculos_planejados": "Veículos planejados",
+                "veiculos_mobilizados": "Veículos mobilizados",
+            }
+        )
 
         st.dataframe(
-            h[colunas].head(20),
+            ramp_reuniao,
             use_container_width=True,
             hide_index=True,
         )
-
 
 # ============================================================
 # RODAPÉ
 # ============================================================
 
 st.markdown(
-    """
-    <div
-        class="small-note"
-        style="margin-top:40px"
-    >
-        V0 Black Piano ·
-        Aqua Pernambuco – Enorsul ·
-        Dados persistidos no Cloudflare D1
+    f"""
+    <div class="rodape">
+        V0 — versão-base oficial ·
+        Dados carregados da base estruturada de mobilização ·
+        Go-Live: 26/10/2026
     </div>
     """,
     unsafe_allow_html=True,
