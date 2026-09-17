@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
+import io
+import unicodedata
 from datetime import date, datetime, timedelta
 
 # ============================================================
@@ -768,6 +770,219 @@ def _opcoes_coluna(df, campo, extras=None):
     return sorted(set(vals))
 
 
+
+def _norm(v):
+    if v is None:
+        return ""
+    try:
+        if pd.isna(v):
+            return ""
+    except Exception:
+        pass
+    txt = str(v).strip().lower()
+    txt = "".join(c for c in unicodedata.normalize("NFKD", txt) if not unicodedata.combining(c))
+    return " ".join(txt.split())
+
+
+def _iso_excel(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        return pd.to_datetime(v).date().isoformat()
+    except Exception:
+        return None
+
+
+def _pct_excel(v):
+    try:
+        x = float(v)
+        if x <= 1:
+            x *= 100
+        return int(round(max(0, min(100, x))))
+    except Exception:
+        return 0
+
+
+def _status_etapa(v):
+    t = _norm(v)
+    if not t:
+        return "Pendente"
+    if any(x in t for x in ["aprov", "conclu", "ok", "liberad", "entregue", "realiz"]):
+        return "Aprovado"
+    if any(x in t for x in ["analise", "andamento", "process", "aguard"]):
+        return "Em análise"
+    return str(v).strip()
+
+
+def analisar_planilha_mobilizacao(uploaded):
+    """Lê o modelo oficial sem gravar nada e devolve operações propostas."""
+    conteudo = uploaded.getvalue()
+    xls = pd.ExcelFile(io.BytesIO(conteudo))
+    operacoes, avisos = [], []
+
+    # Índices do banco atual para fazer UPSERT sem duplicar.
+    idx_atv = {}
+    if not df_atividades.empty:
+        for _, r in df_atividades.iterrows():
+            chave = (_norm(r.get("frente")), _norm(r.get("macroetapa")), _norm(r.get("atividade")))
+            idx_atv[chave] = r.to_dict()
+
+    idx_pes_cpf, idx_pes_nome = {}, {}
+    if not df_pessoas.empty:
+        for _, r in df_pessoas.iterrows():
+            cpf = _norm(r.get("cpf_matricula", r.get("cpf")))
+            if cpf:
+                idx_pes_cpf[cpf] = r.to_dict()
+            chave = (_norm(r.get("frente")), _norm(r.get("polo_base", r.get("polo"))), _norm(r.get("nome")))
+            idx_pes_nome[chave] = r.to_dict()
+
+    idx_base = {}
+    if not df_polos.empty:
+        for _, r in df_polos.iterrows():
+            nome = r.get("nome", r.get("polo_base", r.get("base")))
+            chave = (_norm(r.get("frente")), _norm(nome))
+            idx_base[chave] = r.to_dict()
+
+    # 1) Checklists das três frentes
+    for frente in ["Leitura", "Cobrança", "Hidrometria"]:
+        if frente not in xls.sheet_names:
+            avisos.append(f"Aba {frente} não encontrada.")
+            continue
+        df = pd.read_excel(io.BytesIO(conteudo), sheet_name=frente, header=3)
+        for _, r in df.iterrows():
+            atividade = r.get("Item / Atividade")
+            macro = r.get("Macroetapa")
+            if not _norm(atividade):
+                continue
+            status = str(r.get("Status") or "Não iniciado").strip()
+            if status not in STATUS_VALIDOS:
+                status = "Não iniciado"
+            payload = {
+                "frente": frente,
+                "macroetapa": texto(macro, ""),
+                "atividade": texto(atividade, ""),
+                "prioridade": texto(r.get("Prioridade"), "Média"),
+                "status": status,
+                "percentual": 100 if status == "Concluído" else (0 if status == "Não iniciado" else _pct_excel(r.get("% Conclusão"))),
+                "responsavel": texto(r.get("Responsável"), ""),
+                "dependencia": texto(r.get("Dependência"), ""),
+                "data_prevista": _iso_excel(r.get("Data Prevista")),
+                "data_conclusao": _iso_excel(r.get("Data Conclusão")),
+                "evidencia_link": texto(r.get("Evidência / Link"), ""),
+            }
+            chave = (_norm(frente), _norm(macro), _norm(atividade))
+            atual = idx_atv.get(chave)
+            acao = "Atualizar" if atual and atual.get("id") is not None else "Adicionar"
+            operacoes.append({"tipo":"Atividade", "acao":acao, "id": atual.get("id") if atual else None,
+                              "chave": f"{frente} · {texto(macro,'')} · {texto(atividade,'')}", "payload":payload})
+
+    # 2) Aprovação nominal de funcionários
+    if "Aprovação Funcionários" in xls.sheet_names:
+        df = pd.read_excel(io.BytesIO(conteudo), sheet_name="Aprovação Funcionários", header=2)
+        mapa = {
+            "Admissão":"admissao", "ASO":"aso", "Docs RH":"docs_rh", "Docs SSMA":"docs_ssma",
+            "Fardamento":"fardamento", "EPI":"epi", "Cadastro Cliente":"cadastro_cliente",
+            "Aprovação Cliente":"aprovacao_cliente", "Integração":"integracao", "Treinamento":"treinamento",
+            "Acesso ao Sistema":"acesso_sistema", "Liberado para Campo":"liberado_campo"
+        }
+        for _, r in df.iterrows():
+            nome = r.get("Nome")
+            if not _norm(nome):
+                continue
+            frente = texto(r.get("Frente"), "")
+            polo = texto(r.get("Polo / Região / Varredura"), "")
+            cpf = texto(r.get("CPF / Matrícula"), "")
+            payload = {"frente":frente, "polo_base":polo, "nome":texto(nome,""), "cpf_matricula":cpf,
+                       "funcao":texto(r.get("Função"),""), "equipe":texto(r.get("Equipe"),"")}
+            for col, campo in mapa.items():
+                if col in df.columns:
+                    payload[campo] = _status_etapa(r.get(col))
+            atual = idx_pes_cpf.get(_norm(cpf)) if _norm(cpf) else None
+            if atual is None:
+                atual = idx_pes_nome.get((_norm(frente), _norm(polo), _norm(nome)))
+            acao = "Atualizar" if atual and atual.get("id") is not None else "Adicionar"
+            operacoes.append({"tipo":"Pessoa", "acao":acao, "id":atual.get("id") if atual else None,
+                              "chave":f"{frente} · {polo} · {texto(nome,'')}", "payload":payload})
+    else:
+        avisos.append("Aba Aprovação Funcionários não encontrada.")
+
+    # 3) Escritórios e bases
+    if "Escritórios e Bases" in xls.sheet_names:
+        df = pd.read_excel(io.BytesIO(conteudo), sheet_name="Escritórios e Bases", header=2)
+        mapa_base = {"Imóvel":"imovel", "Energia":"energia", "Internet":"internet", "Mobiliário":"mobiliario",
+                     "TI":"ti", "Estoque":"estoque", "Sinalização":"sinalizacao", "SSMA Base":"ssma_base"}
+        for _, r in df.iterrows():
+            base = r.get("Base / Escritório")
+            frente = r.get("Frente")
+            if not _norm(base) or not _norm(frente):
+                continue
+            payload = {"frente":texto(frente,""), "nome":texto(base,""), "tipo":texto(r.get("Tipo"),""),
+                       "endereco":texto(r.get("Endereço"),""), "responsavel":texto(r.get("Responsável"),"")}
+            for col, campo in mapa_base.items():
+                if col in df.columns:
+                    payload[campo] = _status_etapa(r.get(col))
+            atual = idx_base.get((_norm(frente), _norm(base)))
+            acao = "Atualizar" if atual and atual.get("id") is not None else "Adicionar"
+            operacoes.append({"tipo":"Base", "acao":acao, "id":atual.get("id") if atual else None,
+                              "chave":f"{texto(frente,'')} · {texto(base,'')}", "payload":payload})
+    else:
+        avisos.append("Aba Escritórios e Bases não encontrada.")
+
+    return operacoes, avisos
+
+
+def executar_importacao(operacoes):
+    resultados = []
+    rota_por_tipo = {"Atividade":"atividades", "Pessoa":"pessoas", "Base":"polos"}
+    for op in operacoes:
+        rota = rota_por_tipo[op["tipo"]]
+        if op["acao"] == "Atualizar" and op.get("id") is not None:
+            ok, erro = atualizar_registro(rota, op["id"], op["payload"])
+        else:
+            ok, erro = criar_registro(rota, op["payload"])
+        resultados.append({"Tipo":op["tipo"], "Ação":op["acao"], "Registro":op["chave"],
+                           "Resultado":"OK" if ok else "Erro", "Detalhe":"" if ok else (erro or "")})
+    st.cache_data.clear()
+    return pd.DataFrame(resultados)
+
+
+def painel_importacao_excel():
+    st.markdown("### 📥 Atualizar via planilha")
+    st.caption("Use o mesmo Checklist de Mobilização. Primeiro fazemos a conferência; nada é gravado antes da sua confirmação.")
+    arquivo = st.file_uploader("Carregar planilha de mobilização", type=["xlsx"], key="import_excel_mob")
+    if arquivo is None:
+        st.info("O importador reconhece as abas Leitura, Cobrança, Hidrometria, Aprovação Funcionários e Escritórios e Bases.")
+        return
+    try:
+        operacoes, avisos = analisar_planilha_mobilizacao(arquivo)
+    except Exception as exc:
+        st.error(f"Não foi possível ler a planilha: {exc}")
+        return
+    for aviso in avisos:
+        st.warning(aviso)
+    if not operacoes:
+        st.warning("Nenhum registro válido foi encontrado.")
+        return
+    resumo = pd.DataFrame(operacoes)
+    cont = resumo.groupby(["tipo","acao"]).size().reset_index(name="Quantidade")
+    st.markdown("#### Prévia da sincronização")
+    st.dataframe(cont, use_container_width=True, hide_index=True)
+    prev = pd.DataFrame([{"Tipo":o["tipo"], "Ação":o["acao"], "Registro":o["chave"]} for o in operacoes])
+    st.dataframe(prev, use_container_width=True, hide_index=True, height=320)
+    st.caption(f"Total identificado: {len(operacoes)} registros. Registros existentes serão atualizados; novos registros serão adicionados.")
+    confirmar = st.checkbox("Conferi a prévia e autorizo a sincronização desta planilha.", key="confirm_import")
+    if st.button("Sincronizar planilha", type="primary", use_container_width=True, disabled=not confirmar, key="btn_sync_excel"):
+        with st.spinner("Sincronizando com o banco..."):
+            resultado = executar_importacao(operacoes)
+        ok = int((resultado["Resultado"] == "OK").sum())
+        erros = len(resultado) - ok
+        if erros == 0:
+            st.success(f"Sincronização concluída: {ok} registros processados com sucesso.")
+        else:
+            st.warning(f"Sincronização concluída com {ok} sucessos e {erros} erros. Veja os detalhes abaixo.")
+        st.dataframe(resultado, use_container_width=True, hide_index=True, height=360)
+
+
 def formulario_nova_pessoa():
     st.markdown("### ➕ Adicionar colaborador")
     st.caption("Cadastro baseado na aba ‘Aprovação Funcionários’: admissão, ASO, RH, SSMA, fardamento, EPI, cliente, integração, treinamento e acesso.")
@@ -1496,7 +1711,7 @@ elif pagina == "Pessoas & Estrutura":
 elif pagina == "Atualizar dados":
     cabecalho("Atualizar dados", "Cadastre e atualize a mobilização sem alterar planilhas ou código.")
     st.info("As inclusões e alterações são gravadas pela API. O Worker precisa aceitar POST/PATCH/PUT nas rotas pessoas, recursos e polos.")
-    t0,t1,t2,t3,t4 = st.tabs(["📝 Atividades", "👥 Pessoas", "🚗 Frota / Recursos", "🦺 Documentação & SSMA", "🏢 Bases"])
+    t0,t1,t2,t3,t4,t5 = st.tabs(["📝 Atividades", "👥 Pessoas", "🚗 Frota / Recursos", "🦺 Documentação & SSMA", "🏢 Bases", "📥 Importar planilha"])
     with t0:
         st.markdown("### Editar atividade")
         st.caption("Altere status, percentual, prazo, prioridade, responsável, dependência e próximo passo. Concluído define automaticamente 100%; Não iniciado define 0%.")
@@ -1514,6 +1729,8 @@ elif pagina == "Atualizar dados":
         st.caption("A liberação para campo é calculada quando todas as etapas aplicáveis do colaborador estão aprovadas.")
     with t4:
         formulario_nova_base()
+    with t5:
+        painel_importacao_excel()
 
 # ============================================================
 # 7. CRONOGRAMA & RAMPAGEM
