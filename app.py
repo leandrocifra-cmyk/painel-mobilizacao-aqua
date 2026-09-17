@@ -40,6 +40,13 @@ ORDEM_PRIORIDADE = {
     "Baixa": 4,
 }
 
+ETAPAS_PESSOA = [
+    "admissao", "aso", "docs_rh", "docs_ssma", "fardamento", "epi",
+    "cadastro_cliente", "aprovacao_cliente", "integracao", "treinamento", "acesso_sistema",
+]
+STATUS_ETAPA_PESSOA = ["Pendente", "Em análise", "Aprovado", "Não se aplica"]
+
+
 # ============================================================
 # ESTILO
 # ============================================================
@@ -542,21 +549,51 @@ def recursos_por_categoria(termos):
     return int(planejado), int(disponivel)
 
 
+def _status_aprovado(valor):
+    return str(valor or "").strip().lower() in {"aprovado", "sim", "1", "true", "concluído", "concluido"}
+
+
+def _coluna_pessoa(candidatas):
+    for c in candidatas:
+        if c in df_pessoas.columns:
+            return c
+    return None
+
+
+def _contar_aprovados_pessoas(candidatas):
+    c = _coluna_pessoa(candidatas)
+    if not c or df_pessoas.empty:
+        return 0
+    return int(df_pessoas[c].apply(_status_aprovado).sum())
+
+
 def indicadores_mobilizacao_macro():
     total_pessoas = len(df_pessoas)
-    aprovados = 0
-    docs = 0
-    if not df_pessoas.empty:
-        if "aprovado_aqua" in df_pessoas.columns:
-            aprovados = int(pd.to_numeric(df_pessoas["aprovado_aqua"], errors="coerce").fillna(0).sum())
-        if "documentacao_enviada" in df_pessoas.columns:
-            docs = int(pd.to_numeric(df_pessoas["documentacao_enviada"], errors="coerce").fillna(0).sum())
+    contratados = _contar_aprovados_pessoas(["admissao", "situacao", "aprovado_aqua"])
+    if contratados == 0 and total_pessoas:
+        contratados = total_pessoas
+
+    # Documentação: considera o funil da planilha-base (ASO, RH, SSMA, cadastro e aprovação cliente).
+    etapas_doc = [
+        ["aso"], ["docs_rh", "documentacao_enviada"], ["docs_ssma"],
+        ["cadastro_cliente"], ["aprovacao_cliente", "aprovado_aqua"],
+    ]
+    existentes = [grupo for grupo in etapas_doc if _coluna_pessoa(grupo)]
+    if total_pessoas and existentes:
+        aprov_etapas = sum(_contar_aprovados_pessoas(g) for g in existentes)
+        docs_pct = percentual_seguro(aprov_etapas, total_pessoas * len(existentes))
+        docs_detalhe = f"{docs_pct:.0f}% das etapas documentais aprovadas"
+    else:
+        docs_pct = 0.0
+        docs_detalhe = "Sem dados documentais"
+
     frota_plan, frota_disp = recursos_por_categoria(["frota", "veículo", "veiculo", "carro", "moto"])
     epi_plan, epi_disp = recursos_por_categoria(["epi", "fardamento", "uniforme", "bota", "camisa", "calça", "calca"])
+
     return [
-        ("Contratação de pessoal", percentual_seguro(aprovados, total_pessoas), f"{aprovados} aprovados de {total_pessoas}"),
+        ("Contratação de pessoal", percentual_seguro(contratados, total_pessoas), f"{contratados} contratados de {total_pessoas}"),
         ("Frota", percentual_seguro(frota_disp, frota_plan), f"{frota_disp} disponíveis de {frota_plan}"),
-        ("Documentação", percentual_seguro(docs, total_pessoas), f"{docs} completos de {total_pessoas}"),
+        ("Documentação / SSMA", docs_pct, docs_detalhe),
         ("Fardamento & EPI", percentual_seguro(epi_disp, epi_plan), f"{epi_disp} disponíveis de {epi_plan}"),
     ]
 
@@ -619,6 +656,204 @@ def editor_atividade(base, chave):
             st.rerun()
         else:
             st.error("A tela de edição está pronta, mas a API ainda não aceitou gravação. É necessário habilitar PATCH/PUT no Worker. " + (erro or ""))
+
+
+
+def api_mutacao(metodo, rota, payload=None):
+    try:
+        r = requests.request(metodo, f"{API_URL}/{rota}", json=payload, timeout=20)
+        if r.ok:
+            st.cache_data.clear()
+            return True, None
+        detalhe = r.text[:400] if r.text else ""
+        return False, f"HTTP {r.status_code} {detalhe}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def criar_registro(rota, payload):
+    return api_mutacao("POST", rota, payload)
+
+
+def atualizar_registro(rota, registro_id, payload):
+    for metodo in ("PATCH", "PUT"):
+        ok, erro = api_mutacao(metodo, f"{rota}/{registro_id}", payload)
+        if ok:
+            return True, None
+    return False, erro
+
+
+def excluir_registro(rota, registro_id):
+    return api_mutacao("DELETE", f"{rota}/{registro_id}")
+
+
+def _opcoes_coluna(df, campo, extras=None):
+    vals = []
+    if not df.empty and campo in df.columns:
+        vals = [str(x).strip() for x in df[campo].dropna().tolist() if str(x).strip()]
+    vals += (extras or [])
+    return sorted(set(vals))
+
+
+def formulario_nova_pessoa():
+    st.markdown("### ➕ Adicionar colaborador")
+    st.caption("Cadastro baseado na aba ‘Aprovação Funcionários’: admissão, ASO, RH, SSMA, fardamento, EPI, cliente, integração, treinamento e acesso.")
+    with st.form("form_nova_pessoa", clear_on_submit=True):
+        a,b,c = st.columns(3)
+        frente = a.selectbox("Frente *", ["Leitura", "Cobrança", "Hidrometria"])
+        polos = _opcoes_coluna(df_polos, "nome", ["Recife", "Caruaru", "Arcoverde", "Serra Talhada", "Gravatá"])
+        polo = b.selectbox("Polo / Base *", polos if polos else ["Recife"])
+        nome = c.text_input("Nome *")
+        a,b,c = st.columns(3)
+        cpf = a.text_input("CPF / Matrícula")
+        funcao = b.text_input("Função")
+        equipe = c.text_input("Equipe")
+        st.markdown("#### Etapas de liberação")
+        cols = st.columns(4)
+        valores = {}
+        labels = {
+            "admissao":"Admissão", "aso":"ASO", "docs_rh":"Docs RH", "docs_ssma":"Docs SSMA",
+            "fardamento":"Fardamento", "epi":"EPI", "cadastro_cliente":"Cadastro Cliente",
+            "aprovacao_cliente":"Aprovação Cliente", "integracao":"Integração", "treinamento":"Treinamento",
+            "acesso_sistema":"Acesso Sistema"
+        }
+        for i,campo in enumerate(ETAPAS_PESSOA):
+            valores[campo] = cols[i % 4].selectbox(labels[campo], STATUS_ETAPA_PESSOA, key=f"np_{campo}")
+        observacao = st.text_area("Observação")
+        salvar = st.form_submit_button("Adicionar colaborador", type="primary", use_container_width=True)
+    if salvar:
+        if not nome.strip():
+            st.error("Informe o nome do colaborador.")
+            return
+        liberado = all(v in {"Aprovado", "Não se aplica"} for v in valores.values())
+        payload = {
+            "frente": frente, "polo_base": polo, "nome": nome.strip(), "cpf_matricula": cpf.strip(),
+            "funcao": funcao.strip(), "equipe": equipe.strip(), **valores,
+            "liberado_campo": 1 if liberado else 0, "observacao": observacao.strip(),
+        }
+        ok, erro = criar_registro("pessoas", payload)
+        if ok:
+            st.success(f"{nome} adicionado com sucesso.")
+            st.rerun()
+        else:
+            st.error("O formulário está pronto, mas a API ainda não aceitou o cadastro. Habilite POST /pessoas no Worker. " + (erro or ""))
+
+
+def formulario_editar_pessoa():
+    if df_pessoas.empty or "id" not in df_pessoas.columns:
+        st.info("Nenhum colaborador com ID disponível para edição.")
+        return
+    base = df_pessoas.dropna(subset=["id"]).copy()
+    if base.empty:
+        st.info("Nenhum colaborador com ID disponível para edição.")
+        return
+    labels = {str(r["id"]): f"{texto(r.get('nome'))} · {texto(r.get('frente'))} · {texto(r.get('polo_base'))}" for _,r in base.iterrows()}
+    pid = st.selectbox("Colaborador", list(labels), format_func=lambda x: labels[x], key="ep_id")
+    row = base[base["id"].astype(str)==str(pid)].iloc[0]
+    with st.form("form_editar_pessoa"):
+        a,b,c = st.columns(3)
+        frente_opts=["Leitura","Cobrança","Hidrometria"]
+        fr=texto(row.get("frente"),"Leitura"); frente=a.selectbox("Frente",frente_opts,index=frente_opts.index(fr) if fr in frente_opts else 0)
+        polo=b.text_input("Polo / Base", value=texto(row.get("polo_base"),""))
+        nome=c.text_input("Nome", value=texto(row.get("nome"),""))
+        a,b,c=st.columns(3)
+        cpf=a.text_input("CPF / Matrícula", value=texto(row.get("cpf_matricula", row.get("cpf")),""))
+        funcao=b.text_input("Função", value=texto(row.get("funcao"),""))
+        equipe=c.text_input("Equipe", value=texto(row.get("equipe"),""))
+        st.markdown("#### Etapas de liberação")
+        cols=st.columns(4); valores={}
+        labels_et={"admissao":"Admissão","aso":"ASO","docs_rh":"Docs RH","docs_ssma":"Docs SSMA","fardamento":"Fardamento","epi":"EPI","cadastro_cliente":"Cadastro Cliente","aprovacao_cliente":"Aprovação Cliente","integracao":"Integração","treinamento":"Treinamento","acesso_sistema":"Acesso Sistema"}
+        for i,campo in enumerate(ETAPAS_PESSOA):
+            atual=texto(row.get(campo),"Pendente")
+            idx=STATUS_ETAPA_PESSOA.index(atual) if atual in STATUS_ETAPA_PESSOA else 0
+            valores[campo]=cols[i%4].selectbox(labels_et[campo],STATUS_ETAPA_PESSOA,index=idx,key=f"ep_{campo}")
+        observacao=st.text_area("Observação", value=texto(row.get("observacao"),""))
+        salvar=st.form_submit_button("Salvar colaborador",type="primary",use_container_width=True)
+    if salvar:
+        liberado=all(v in {"Aprovado","Não se aplica"} for v in valores.values())
+        payload={"frente":frente,"polo_base":polo,"nome":nome,"cpf_matricula":cpf,"funcao":funcao,"equipe":equipe,**valores,"liberado_campo":1 if liberado else 0,"observacao":observacao}
+        ok,erro=atualizar_registro("pessoas",pid,payload)
+        if ok:
+            st.success("Colaborador atualizado."); st.rerun()
+        else:
+            st.error("A API ainda não aceitou a atualização de pessoas. " + (erro or ""))
+
+
+def formulario_novo_recurso():
+    st.markdown("### ➕ Adicionar recurso")
+    with st.form("form_novo_recurso", clear_on_submit=True):
+        a,b,c=st.columns(3)
+        frente=a.selectbox("Frente",["Leitura","Cobrança","Hidrometria"],key="nr_fr")
+        polo=b.text_input("Polo / Base",value="Recife")
+        categoria=c.selectbox("Categoria",["Frota","Fardamento","EPI","Ferramenta","Equipamento","Material","TI","Outro"])
+        a,b,c=st.columns(3)
+        descricao=a.text_input("Descrição *")
+        identificacao=b.text_input("Identificação / Placa")
+        status=c.selectbox("Status",STATUS_VALIDOS)
+        a,b=st.columns(2)
+        planejado=a.number_input("Quantidade necessária",min_value=0,value=0,step=1)
+        disponivel=b.number_input("Quantidade disponível",min_value=0,value=0,step=1)
+        responsavel=st.text_input("Responsável")
+        observacao=st.text_area("Observação")
+        salvar=st.form_submit_button("Adicionar recurso",type="primary",use_container_width=True)
+    if salvar:
+        if not descricao.strip(): st.error("Informe a descrição do recurso."); return
+        payload={"frente":frente,"polo_base":polo,"categoria":categoria,"descricao":descricao,"identificacao":identificacao,"quantidade_planejada":int(planejado),"quantidade_disponivel":int(disponivel),"status":status,"responsavel":responsavel,"observacao":observacao}
+        ok,erro=criar_registro("recursos",payload)
+        if ok: st.success("Recurso adicionado."); st.rerun()
+        else: st.error("A API ainda não aceitou POST /recursos. " + (erro or ""))
+
+
+def formulario_editar_recurso():
+    if df_recursos.empty or "id" not in df_recursos.columns:
+        st.info("Nenhum recurso com ID disponível para edição."); return
+    base=df_recursos.dropna(subset=["id"]).copy()
+    labels={str(r["id"]):f"{texto(r.get('categoria'))} · {texto(r.get('descricao'))} · {texto(r.get('polo_base'))}" for _,r in base.iterrows()}
+    rid=st.selectbox("Recurso",list(labels),format_func=lambda x:labels[x],key="er_id")
+    row=base[base["id"].astype(str)==str(rid)].iloc[0]
+    with st.form("form_editar_recurso"):
+        a,b,c=st.columns(3)
+        frente=a.text_input("Frente",value=texto(row.get("frente"),"")); polo=b.text_input("Polo / Base",value=texto(row.get("polo_base"),"")); categoria=c.text_input("Categoria",value=texto(row.get("categoria"),""))
+        descricao=st.text_input("Descrição",value=texto(row.get("descricao"),""))
+        a,b=st.columns(2); planejado=a.number_input("Quantidade necessária",min_value=0,value=numero(row.get("quantidade_planejada")),step=1); disponivel=b.number_input("Quantidade disponível",min_value=0,value=numero(row.get("quantidade_disponivel")),step=1)
+        status_at=texto(row.get("status"),"Não iniciado"); idx=STATUS_VALIDOS.index(status_at) if status_at in STATUS_VALIDOS else 0
+        status=st.selectbox("Status",STATUS_VALIDOS,index=idx); obs=st.text_area("Observação",value=texto(row.get("observacao"),""))
+        salvar=st.form_submit_button("Salvar recurso",type="primary",use_container_width=True)
+    if salvar:
+        ok,erro=atualizar_registro("recursos",rid,{"frente":frente,"polo_base":polo,"categoria":categoria,"descricao":descricao,"quantidade_planejada":int(planejado),"quantidade_disponivel":int(disponivel),"status":status,"observacao":obs})
+        if ok: st.success("Recurso atualizado."); st.rerun()
+        else: st.error("A API ainda não aceitou a atualização do recurso. " + (erro or ""))
+
+
+def formulario_nova_base():
+    st.markdown("### ➕ Adicionar base / escritório")
+    with st.form("form_nova_base", clear_on_submit=True):
+        a,b,c=st.columns(3); frente=a.selectbox("Frente",["Leitura","Cobrança","Hidrometria"],key="nb_fr"); nome=b.text_input("Base / Escritório *"); tipo=c.text_input("Tipo")
+        endereco=st.text_input("Endereço"); responsavel=st.text_input("Responsável")
+        st.markdown("#### Prontidão da base")
+        cols=st.columns(4); checks={}
+        for i,campo in enumerate(["imovel","energia","internet","mobiliario","ti","estoque","sinalizacao","ssma_base"]):
+            checks[campo]=cols[i%4].checkbox(campo.replace("_"," ").title(),key=f"nb_{campo}")
+        pendencia=st.text_area("Pendência")
+        salvar=st.form_submit_button("Adicionar base",type="primary",use_container_width=True)
+    if salvar:
+        if not nome.strip(): st.error("Informe o nome da base."); return
+        payload={"frente":frente,"nome":nome,"tipo":tipo,"endereco":endereco,"responsavel":responsavel,**{k:1 if v else 0 for k,v in checks.items()},"pendencia":pendencia}
+        ok,erro=criar_registro("polos",payload)
+        if ok: st.success("Base adicionada."); st.rerun()
+        else: st.error("A API ainda não aceitou POST /polos. " + (erro or ""))
+
+
+def painel_ssma():
+    st.markdown("### SSMA e documentação")
+    if df_pessoas.empty:
+        st.info("Cadastre colaboradores para acompanhar SSMA."); return
+    total=len(df_pessoas)
+    itens=[("ASO",["aso"]),("Docs RH",["docs_rh","documentacao_enviada"]),("Docs SSMA",["docs_ssma"]),("Cadastro Cliente",["cadastro_cliente"]),("Aprovação Cliente",["aprovacao_cliente","aprovado_aqua"]),("Integração",["integracao"]),("Treinamento",["treinamento"]),("Acesso Sistema",["acesso_sistema"])]
+    cols=st.columns(4)
+    for i,(nome,cands) in enumerate(itens):
+        n=_contar_aprovados_pessoas(cands); pct=percentual_seguro(n,total)
+        with cols[i%4]: card_macro(nome,pct,f"{n} de {total}")
 
 
 def cabecalho(titulo, subtitulo=None):
@@ -815,6 +1050,7 @@ with st.sidebar:
             "Cobrança",
             "Hidrometria",
             "Pessoas & Estrutura",
+            "Atualizar dados",
             "Cronograma & Rampagem",
             "Modo Reunião",
         ],
@@ -1181,7 +1417,29 @@ elif pagina == "Pessoas & Estrutura":
             )
 
 # ============================================================
-# 6. CRONOGRAMA & RAMPAGEM
+# 6. ATUALIZAR DADOS
+# ============================================================
+
+elif pagina == "Atualizar dados":
+    cabecalho("Atualizar dados", "Cadastre e atualize a mobilização sem alterar planilhas ou código.")
+    st.info("As inclusões e alterações são gravadas pela API. O Worker precisa aceitar POST/PATCH/PUT nas rotas pessoas, recursos e polos.")
+    t1,t2,t3,t4 = st.tabs(["👥 Pessoas", "🚗 Frota / Recursos", "🦺 Documentação & SSMA", "🏢 Bases"])
+    with t1:
+        sub1,sub2=st.tabs(["Adicionar","Editar"]);
+        with sub1: formulario_nova_pessoa()
+        with sub2: formulario_editar_pessoa()
+    with t2:
+        sub1,sub2=st.tabs(["Adicionar","Editar"]);
+        with sub1: formulario_novo_recurso()
+        with sub2: formulario_editar_recurso()
+    with t3:
+        painel_ssma()
+        st.caption("A liberação para campo é calculada quando todas as etapas aplicáveis do colaborador estão aprovadas.")
+    with t4:
+        formulario_nova_base()
+
+# ============================================================
+# 7. CRONOGRAMA & RAMPAGEM
 # ============================================================
 
 elif pagina == "Cronograma & Rampagem":
@@ -1604,7 +1862,7 @@ elif pagina == "Modo Reunião":
 st.markdown(
     f"""
     <div class="rodape">
-        V1 — layout executivo + edição direta ·
+        V2 — gestão operacional + cadastros editáveis ·
         Dados carregados da base estruturada de mobilização ·
         Go-Live: 26/10/2026
     </div>
