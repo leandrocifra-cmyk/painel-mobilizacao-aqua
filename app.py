@@ -833,40 +833,18 @@ def cards_criticos(df, limite=6):
             or txt(r.get("pendencia_acao"))
         )
 
-        st.markdown(
-            f"""
-            <div class="piano-card">
-
-                <div class="piano-title">
-                    {txt(r.get("atividade"))}
-                </div>
-
-                {badges(r)}
-
-                <div class="piano-body">
-                    <b>{txt(r.get("frente"))}</b>
-                    · {txt(r.get("status"))}
-                    <br>
-
-                    Responsável:
-                    {txt(r.get("responsavel")) or "—"}
-
-                    · Prazo:
-                    {formatar_data(
-                        r.get("data_prevista")
-                    )}
-
-                    {
-                        "<br><br>" + acao
-                        if acao
-                        else ""
-                    }
-
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        html = (
+            f'<div class="piano-card">'
+            f'<div class="piano-title">{txt(r.get("atividade"))}</div>'
+            f'{badges(r)}'
+            f'<div class="piano-body">'
+            f'<b>{txt(r.get("frente"))}</b> · {txt(r.get("status"))}<br>'
+            f'Responsável: {txt(r.get("responsavel")) or "—"} '
+            f'· Prazo: {formatar_data(r.get("data_prevista"))}'
+            f'{"<br><br>" + acao if acao else ""}'
+            f'</div></div>'
         )
+        st.markdown(html, unsafe_allow_html=True)
 
 
 def grafico_status(df):
