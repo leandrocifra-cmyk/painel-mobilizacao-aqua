@@ -632,30 +632,103 @@ def salvar_atividade_api(atividade_id, payload):
 
 def editor_atividade(base, chave):
     if base.empty or "id" not in base.columns:
+        st.info("Nenhuma atividade disponível para edição.")
         return
-    st.markdown("### Atualização rápida")
+
     opcoes = base.dropna(subset=["id"]).copy()
     if opcoes.empty:
         st.caption("Nenhuma atividade com ID disponível para edição.")
         return
-    rotulos = {str(r["id"]): f"{texto(r.get('macroetapa'),'')} · {texto(r.get('atividade'))}" for _, r in opcoes.iterrows()}
-    atividade_id = st.selectbox("Atividade para editar", list(rotulos.keys()), format_func=lambda x: rotulos[x], key=f"edit_id_{chave}")
+
+    # Filtros para localizar rapidamente a atividade
+    cfr, cma = st.columns(2)
+    frentes = sorted([texto(x) for x in opcoes["frente"].dropna().unique() if texto(x)]) if "frente" in opcoes.columns else []
+    frente_sel = cfr.selectbox("Frente", ["Todas"] + frentes, key=f"edit_frente_{chave}")
+    base_filtrada = opcoes if frente_sel == "Todas" else opcoes[opcoes["frente"] == frente_sel]
+
+    macros = sorted([texto(x) for x in base_filtrada["macroetapa"].dropna().unique() if texto(x)]) if "macroetapa" in base_filtrada.columns else []
+    macro_sel = cma.selectbox("Macroetapa", ["Todas"] + macros, key=f"edit_macro_{chave}")
+    if macro_sel != "Todas":
+        base_filtrada = base_filtrada[base_filtrada["macroetapa"] == macro_sel]
+
+    rotulos = {
+        str(r["id"]): f"{texto(r.get('macroetapa'),'')} · {texto(r.get('atividade'))}"
+        for _, r in base_filtrada.iterrows()
+    }
+    if not rotulos:
+        st.info("Nenhuma atividade encontrada com esses filtros.")
+        return
+
+    atividade_id = st.selectbox(
+        "Atividade para editar", list(rotulos.keys()),
+        format_func=lambda x: rotulos[x], key=f"edit_id_{chave}"
+    )
     row = opcoes[opcoes["id"].astype(str) == str(atividade_id)].iloc[0]
-    c1, c2, c3 = st.columns([1.1, .7, 1.2])
+
+    st.markdown("#### Dados da atividade")
+    c1, c2, c3 = st.columns([1.1, .7, 1.0])
     status_atual = texto(row.get("status"), "Não iniciado")
     idx = STATUS_VALIDOS.index(status_atual) if status_atual in STATUS_VALIDOS else 0
-    novo_status = c1.selectbox("Status", STATUS_VALIDOS, index=idx, key=f"edit_status_{chave}")
-    novo_pct = c2.number_input("%", min_value=0, max_value=100, value=numero(row.get("percentual")), step=5, key=f"edit_pct_{chave}")
-    novo_resp = c3.text_input("Responsável", value=texto(row.get("responsavel"), ""), key=f"edit_resp_{chave}")
-    novo_passo = st.text_area("Próximo passo / pendência", value=texto(row.get("pendencia_acao"), ""), height=80, key=f"edit_passo_{chave}")
-    if st.button("Salvar alteração", type="primary", key=f"save_{chave}"):
-        payload = {"status": novo_status, "percentual": int(novo_pct), "responsavel": novo_resp, "pendencia_acao": novo_passo}
+    novo_status = c1.selectbox("Status", STATUS_VALIDOS, index=idx, key=f"edit_status_{chave}_{atividade_id}")
+
+    pct_atual = numero(row.get("percentual"))
+    # Regras automáticas: concluído=100; não iniciado=0. Nos demais, percentual é editável.
+    if novo_status == "Concluído":
+        novo_pct = 100
+        c2.number_input("%", min_value=0, max_value=100, value=100, disabled=True, key=f"edit_pct_done_{chave}_{atividade_id}")
+    elif novo_status == "Não iniciado":
+        novo_pct = 0
+        c2.number_input("%", min_value=0, max_value=100, value=0, disabled=True, key=f"edit_pct_zero_{chave}_{atividade_id}")
+    else:
+        novo_pct = c2.number_input("%", min_value=0, max_value=100, value=max(0,min(100,pct_atual)), step=5, key=f"edit_pct_{chave}_{atividade_id}")
+
+    prioridades = ["Crítica", "Alta", "Média", "Baixa"]
+    prioridade_atual = texto(row.get("prioridade"), "Média")
+    pidx = prioridades.index(prioridade_atual) if prioridade_atual in prioridades else 2
+    nova_prioridade = c3.selectbox("Prioridade", prioridades, index=pidx, key=f"edit_prio_{chave}_{atividade_id}")
+
+    c4, c5 = st.columns(2)
+    novo_resp = c4.text_input("Responsável", value=texto(row.get("responsavel"), ""), key=f"edit_resp_{chave}_{atividade_id}")
+    nova_dependencia = c5.text_input("Dependência", value=texto(row.get("dependencia"), ""), key=f"edit_dep_{chave}_{atividade_id}")
+
+    c6, c7 = st.columns(2)
+    prazo_atual = converter_data(row.get("data_prevista")) or date.today()
+    novo_prazo = c6.date_input("Prazo / data prevista", value=prazo_atual, format="DD/MM/YYYY", key=f"edit_prazo_{chave}_{atividade_id}")
+    polo_atual = texto(row.get("polo_base"), "")
+    novo_polo = c7.text_input("Polo / Base", value=polo_atual, key=f"edit_polo_{chave}_{atividade_id}")
+
+    novo_passo = st.text_area(
+        "Próximo passo / pendência", value=texto(row.get("pendencia_acao"), ""),
+        height=80, key=f"edit_passo_{chave}_{atividade_id}"
+    )
+    nova_obs = st.text_area(
+        "Observação", value=texto(row.get("observacao"), ""),
+        height=70, key=f"edit_obs_{chave}_{atividade_id}"
+    )
+
+    if st.button("Salvar alteração", type="primary", use_container_width=True, key=f"save_{chave}_{atividade_id}"):
+        payload = {
+            "status": novo_status,
+            "percentual": int(novo_pct),
+            "prioridade": nova_prioridade,
+            "responsavel": novo_resp,
+            "data_prevista": novo_prazo.isoformat(),
+            "dependencia": nova_dependencia,
+            "polo_base": novo_polo,
+            "pendencia_acao": novo_passo,
+            "observacao": nova_obs,
+        }
+        if novo_status == "Concluído":
+            payload["data_conclusao"] = date.today().isoformat()
+        elif status_atual == "Concluído" and novo_status != "Concluído":
+            payload["data_conclusao"] = None
+
         ok, erro = salvar_atividade_api(atividade_id, payload)
         if ok:
-            st.success("Alteração salva na base.")
+            st.success("Atividade atualizada com sucesso.")
             st.rerun()
         else:
-            st.error("A tela de edição está pronta, mas a API ainda não aceitou gravação. É necessário habilitar PATCH/PUT no Worker. " + (erro or ""))
+            st.error("A alteração não foi gravada pela API. O Worker precisa aceitar PATCH/PUT para atividades. " + (erro or ""))
 
 
 
@@ -1423,13 +1496,17 @@ elif pagina == "Pessoas & Estrutura":
 elif pagina == "Atualizar dados":
     cabecalho("Atualizar dados", "Cadastre e atualize a mobilização sem alterar planilhas ou código.")
     st.info("As inclusões e alterações são gravadas pela API. O Worker precisa aceitar POST/PATCH/PUT nas rotas pessoas, recursos e polos.")
-    t1,t2,t3,t4 = st.tabs(["👥 Pessoas", "🚗 Frota / Recursos", "🦺 Documentação & SSMA", "🏢 Bases"])
+    t0,t1,t2,t3,t4 = st.tabs(["📝 Atividades", "👥 Pessoas", "🚗 Frota / Recursos", "🦺 Documentação & SSMA", "🏢 Bases"])
+    with t0:
+        st.markdown("### Editar atividade")
+        st.caption("Altere status, percentual, prazo, prioridade, responsável, dependência e próximo passo. Concluído define automaticamente 100%; Não iniciado define 0%.")
+        editor_atividade(df_atividades, "central")
     with t1:
-        sub1,sub2=st.tabs(["Adicionar","Editar"]);
+        sub1,sub2=st.tabs(["Adicionar","Editar"])
         with sub1: formulario_nova_pessoa()
         with sub2: formulario_editar_pessoa()
     with t2:
-        sub1,sub2=st.tabs(["Adicionar","Editar"]);
+        sub1,sub2=st.tabs(["Adicionar","Editar"])
         with sub1: formulario_novo_recurso()
         with sub2: formulario_editar_recurso()
     with t3:
