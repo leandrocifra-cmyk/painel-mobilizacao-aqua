@@ -404,7 +404,7 @@ def make_map(micro, bases):
 
 def main():
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    st.markdown(f"""<div class="hero"><div class="brand"><div class="aqua">ENORSUL - <span>PERNAMBUCO</span></div><div class="sep"></div><div><div class="title">MOBILIZAÇÃO OPERACIONAL</div><div class="subtitle">LEITURA | HIDROMETRIA | COBRANÇA</div></div></div><div class="hero-right">ÚLTIMA ATUALIZAÇÃO<br><b>{now}</b><div class="logos">Enorsul &nbsp; | &nbsp; A serviço da VITA Sertão</div></div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hero"><div class="brand"><div class="aqua">ENORSUL - <span>PERNAMBUCO</span></div><div class="sep"></div><div><div class="title">MOBILIZAÇÃO OPERACIONAL</div><div class="subtitle">LEITURA | HIDROMETRIA | COBRANÇA</div></div></div><div class="hero-right">ÚLTIMA ATUALIZAÇÃO<br><b>{now}</b></div></div>""", unsafe_allow_html=True)
 
     upload = None
     publicar = False
