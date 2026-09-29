@@ -1,0 +1,2188 @@
+import streamlit as st
+import pandas as pd
+import requests
+import io
+import unicodedata
+from datetime import date, datetime, timedelta
+
+# ============================================================
+# CONFIGURAÇÃO
+# ============================================================
+
+st.set_page_config(
+    page_title="Mobilização | Aqua Pernambuco – Enorsul",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+API_URL = "https://aqua-mobilizacao-api.leandro-cifra.workers.dev"
+GO_LIVE = date(2026, 10, 26)
+
+STATUS_VALIDOS = [
+    "Não iniciado",
+    "Em andamento",
+    "Aguardando Aqua",
+    "Concluído",
+    "Cancelado",
+]
+
+STATUS_CORES = {
+    "Não iniciado": "#667085",
+    "Aguardando Aqua": "#2F80ED",
+    "Concluído": "#39FF88",
+    "Em andamento": "#FFB020",
+    "Cancelado": "#475467",
+}
+
+ORDEM_PRIORIDADE = {
+    "Crítica": 1,
+    "Alta": 2,
+    "Média": 3,
+    "Baixa": 4,
+}
+
+ETAPAS_PESSOA = [
+    "admissao", "aso", "docs_rh", "docs_ssma", "fardamento", "epi",
+    "cadastro_cliente", "aprovacao_cliente", "integracao", "treinamento", "acesso_sistema",
+]
+STATUS_ETAPA_PESSOA = ["Pendente", "Em análise", "Aprovado", "Não se aplica"]
+
+
+# ============================================================
+# ESTILO
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+        .stApp {
+            background: #07090D;
+            color: #F5F7FA;
+        }
+
+        [data-testid="stSidebar"] {
+            background: #0B0E14;
+        }
+
+        [data-testid="stMetric"] {
+            background: rgba(255,255,255,0.045) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,.18);
+        }
+
+        .card {
+            background: rgba(255,255,255,0.045) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,.16);
+        }
+
+        .macro-card {
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 15px 16px 13px 16px;
+            min-height: 138px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.16);
+        }
+        .macro-label { color:#AAB2C0; font-size:.80rem; font-weight:650; }
+        .macro-value { color:#F8FAFC; font-size:1.65rem; font-weight:800; margin:2px 0 8px 0; }
+        .macro-sub { color:#98A2B3; font-size:.76rem; margin-top:7px; }
+        .progress-track { height:8px; background:#20242D; border-radius:999px; overflow:hidden; }
+        .progress-fill { height:100%; border-radius:999px; box-shadow:0 0 12px rgba(57,255,136,.22); }
+        .status-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; box-shadow:0 0 10px currentColor; }
+        .alerta-atraso {
+            display:inline-flex; align-items:center; gap:6px;
+            color:#FF4D6D; font-weight:750; font-size:.76rem;
+            text-shadow:0 0 10px rgba(255,77,109,.45);
+        }
+        .section-shell {
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 18px;
+            padding: 12px 14px 4px 14px;
+            margin: 8px 0 14px 0;
+        }
+
+        .block-container {
+            padding-top: 1.4rem;
+            padding-bottom: 3rem;
+            max-width: 1600px;
+        }
+
+        [data-testid="stSidebar"] {
+            border-right: 1px solid #E5E7EB;
+        }
+
+        h1 {
+            font-size: 2rem !important;
+            font-weight: 750 !important;
+            letter-spacing: -0.03em;
+        }
+
+        h2 {
+            font-size: 1.35rem !important;
+            font-weight: 700 !important;
+            margin-top: 1.2rem !important;
+        }
+
+        h3 {
+            font-size: 1.05rem !important;
+            font-weight: 700 !important;
+        }
+
+        [data-testid="stMetric"] {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            padding: 14px 16px;
+            min-height: 105px;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-weight: 600;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-weight: 750;
+        }
+
+        .titulo-pagina {
+            margin-bottom: 0.1rem;
+        }
+
+        .subtitulo {
+            color: #667085;
+            font-size: 0.93rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 12px;
+        }
+
+        .card-titulo {
+            font-weight: 700;
+            font-size: 0.96rem;
+            margin-bottom: 6px;
+        }
+
+        .card-texto {
+            color: #475467;
+            font-size: 0.90rem;
+            line-height: 1.45;
+        }
+
+        .tag {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 4px 9px;
+            font-size: 0.76rem;
+            font-weight: 650;
+            background: #F2F4F7;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+
+        .rodape {
+            color: #98A2B3;
+            font-size: 0.78rem;
+            margin-top: 2.5rem;
+        }
+
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #EAECF0;
+            border-radius: 10px;
+        }
+
+        .modo-reuniao {
+            padding: 6px 0 12px 0;
+            color: #667085;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ============================================================
+# API
+# ============================================================
+
+@st.cache_data(ttl=60, show_spinner=False)
+def carregar_api(rota):
+    resposta = requests.get(f"{API_URL}/{rota}", timeout=20)
+    resposta.raise_for_status()
+    return resposta.json()
+
+
+def carregar_dados():
+    rotas = [
+        "resumo",
+        "atividades",
+        "frentes",
+        "polos",
+        "pessoas",
+        "recursos",
+        "rampagem",
+        "equipes",
+        "cobertura",
+        "mobilizacao/resumo",
+    ]
+
+    dados = {}
+
+    for rota in rotas:
+        try:
+            dados[rota] = carregar_api(rota)
+        except Exception:
+            dados[rota] = []
+
+    return dados
+
+
+dados = carregar_dados()
+
+df_resumo = pd.DataFrame(dados["resumo"])
+df_atividades = pd.DataFrame(dados["atividades"])
+df_frentes = pd.DataFrame(dados["frentes"])
+df_polos = pd.DataFrame(dados["polos"])
+df_pessoas = pd.DataFrame(dados["pessoas"])
+df_recursos = pd.DataFrame(dados["recursos"])
+df_rampagem = pd.DataFrame(dados["rampagem"])
+df_equipes = pd.DataFrame(dados.get("equipes", []))
+df_cobertura = pd.DataFrame(dados.get("cobertura", []))
+df_mobilizacao = pd.DataFrame(dados.get("mobilizacao/resumo", []))
+
+# ============================================================
+# FUNÇÕES AUXILIARES
+# ============================================================
+
+def numero(valor):
+    try:
+        if pd.isna(valor):
+            return 0
+        return int(valor)
+    except Exception:
+        return 0
+
+
+def texto(valor, padrao="—"):
+    if valor is None:
+        return padrao
+    try:
+        if pd.isna(valor):
+            return padrao
+    except Exception:
+        pass
+
+    valor = str(valor).strip()
+
+    if not valor or valor.lower() in ["none", "nan", "nat"]:
+        return padrao
+
+    return valor
+
+
+def converter_data(valor):
+    if valor is None:
+        return None
+
+    try:
+        if pd.isna(valor):
+            return None
+    except Exception:
+        pass
+
+    try:
+        return pd.to_datetime(valor).date()
+    except Exception:
+        return None
+
+
+def data_br(valor):
+    d = converter_data(valor)
+    return d.strftime("%d/%m/%Y") if d else "—"
+
+
+def percentual_mobilizacao(total, concluidos, cancelados=0):
+    validos = max(numero(total) - numero(cancelados), 0)
+
+    if validos == 0:
+        return 0.0
+
+    return numero(concluidos) / validos * 100
+
+
+def coluna_existente(df, coluna, valor_padrao=None):
+    if coluna not in df.columns:
+        df[coluna] = valor_padrao
+    return df
+
+
+def preparar_atividades(df):
+    if df.empty:
+        return df
+
+    df = df.copy()
+
+    campos = [
+        "id",
+        "frente",
+        "macroetapa",
+        "atividade",
+        "prioridade",
+        "status",
+        "percentual",
+        "responsavel",
+        "data_inicio",
+        "data_prevista",
+        "data_conclusao",
+        "pendencia_acao",
+        "prazo_pendencia",
+        "proximo_passo_manual",
+        "observacao",
+        "evidencia",
+        "criterio_aceite",
+        "dependencia",
+        "polo_base",
+    ]
+
+    for campo in campos:
+        if campo not in df.columns:
+            df[campo] = None
+
+    df["data_prevista_dt"] = pd.to_datetime(
+        df["data_prevista"], errors="coerce"
+    )
+
+    df["prazo_pendencia_dt"] = pd.to_datetime(
+        df["prazo_pendencia"], errors="coerce"
+    )
+
+    df["ordem_prioridade"] = (
+        df["prioridade"].map(ORDEM_PRIORIDADE).fillna(99)
+    )
+
+    hoje = pd.Timestamp(date.today())
+
+    df["atrasada"] = (
+        df["data_prevista_dt"].notna()
+        & (df["data_prevista_dt"] < hoje)
+        & (~df["status"].isin(["Concluído", "Cancelado"]))
+    )
+
+    df["prazo_proximo"] = (
+        df["data_prevista_dt"].notna()
+        & (df["data_prevista_dt"] >= hoje)
+        & (df["data_prevista_dt"] <= hoje + pd.Timedelta(days=7))
+        & (~df["status"].isin(["Concluído", "Cancelado"]))
+    )
+
+    return df
+
+
+df_atividades = preparar_atividades(df_atividades)
+
+
+def totais_gerais():
+    if df_resumo.empty:
+        return {
+            "total": 0,
+            "concluidos": 0,
+            "em_andamento": 0,
+            "aguardando_aqua": 0,
+            "nao_iniciados": 0,
+            "cancelados": 0,
+            "percentual": 0,
+        }
+
+    campos = [
+        "total",
+        "concluidos",
+        "em_andamento",
+        "aguardando_aqua",
+        "nao_iniciados",
+        "cancelados",
+    ]
+
+    totais = {}
+
+    for campo in campos:
+        if campo in df_resumo.columns:
+            totais[campo] = int(
+                pd.to_numeric(
+                    df_resumo[campo], errors="coerce"
+                ).fillna(0).sum()
+            )
+        else:
+            totais[campo] = 0
+
+    totais["percentual"] = percentual_mobilizacao(
+        totais["total"],
+        totais["concluidos"],
+        totais["cancelados"],
+    )
+
+    return totais
+
+
+totais = totais_gerais()
+
+
+def proximo_passo(row):
+    manual = texto(row.get("proximo_passo_manual"), "")
+
+    if manual:
+        return manual
+
+    pendencia = texto(row.get("pendencia_acao"), "")
+
+    if pendencia:
+        return pendencia
+
+    return "—"
+
+
+def pontos_criticos(df, limite=10):
+    if df.empty:
+        return df
+
+    base = df[
+        ~df["status"].isin(["Concluído", "Cancelado"])
+    ].copy()
+
+    if base.empty:
+        return base
+
+    def nivel(row):
+        if bool(row.get("atrasada")):
+            return 1
+        if row.get("status") == "Aguardando Aqua":
+            return 2
+        if bool(row.get("prazo_proximo")):
+            return 3
+        if row.get("prioridade") == "Crítica":
+            return 4
+        if row.get("prioridade") == "Alta":
+            return 5
+        return 6
+
+    base["nivel_critico"] = base.apply(nivel, axis=1)
+
+    base = base.sort_values(
+        ["nivel_critico", "ordem_prioridade", "data_prevista_dt"],
+        na_position="last",
+    )
+
+    return base.head(limite)
+
+
+def tabela_atividades(df):
+    if df.empty:
+        st.info("Nenhuma atividade cadastrada para esta seleção.")
+        return
+
+    exibicao = df.copy()
+
+    exibicao["Prazo"] = exibicao["data_prevista"].apply(data_br)
+    exibicao["Próximo passo"] = exibicao.apply(proximo_passo, axis=1)
+
+    colunas = [
+        "macroetapa",
+        "atividade",
+        "polo_base",
+        "prioridade",
+        "status",
+        "percentual",
+        "responsavel",
+        "Prazo",
+        "dependencia",
+        "Próximo passo",
+    ]
+
+    colunas = [c for c in colunas if c in exibicao.columns]
+
+    exibicao = exibicao[colunas]
+
+    nomes = {
+        "macroetapa": "Macroetapa",
+        "atividade": "Atividade",
+        "polo_base": "Polo/Base",
+        "prioridade": "Prioridade",
+        "status": "Status",
+        "percentual": "%",
+        "responsavel": "Responsável",
+        "dependencia": "Dependência",
+    }
+
+    exibicao = exibicao.rename(columns=nomes)
+
+    st.dataframe(
+        exibicao,
+        use_container_width=True,
+        hide_index=True,
+        height=520,
+    )
+
+
+def percentual_seguro(parte, total):
+    total = numero(total)
+    parte = numero(parte)
+    if total <= 0:
+        return 0.0
+    return max(0.0, min(100.0, parte / total * 100))
+
+
+def recursos_por_categoria(termos):
+    if df_recursos.empty:
+        return 0, 0
+    base = df_recursos.copy()
+    for campo in ["categoria", "descricao"]:
+        if campo not in base.columns:
+            base[campo] = ""
+    texto_busca = (base["categoria"].fillna("").astype(str) + " " + base["descricao"].fillna("").astype(str)).str.lower()
+    mascara = False
+    for termo in termos:
+        mascara = mascara | texto_busca.str.contains(termo.lower(), regex=False)
+    base = base[mascara].copy()
+    if base.empty:
+        return 0, 0
+    planejado = pd.to_numeric(base.get("quantidade_planejada", 0), errors="coerce").fillna(0).sum()
+    disponivel = pd.to_numeric(base.get("quantidade_disponivel", 0), errors="coerce").fillna(0).sum()
+    return int(planejado), int(disponivel)
+
+
+def _status_aprovado(valor):
+    return str(valor or "").strip().lower() in {"aprovado", "sim", "1", "true", "concluído", "concluido"}
+
+
+def _coluna_pessoa(candidatas):
+    for c in candidatas:
+        if c in df_pessoas.columns:
+            return c
+    return None
+
+
+def _contar_aprovados_pessoas(candidatas):
+    c = _coluna_pessoa(candidatas)
+    if not c or df_pessoas.empty:
+        return 0
+    return int(df_pessoas[c].apply(_status_aprovado).sum())
+
+
+def _pessoas_unicas():
+    """Remove duplicidades de sincronizações anteriores para os indicadores."""
+    if df_pessoas.empty:
+        return df_pessoas.copy()
+    base = df_pessoas.copy()
+    for c in ["frente", "polo_base", "nome"]:
+        if c not in base.columns:
+            base[c] = ""
+    base["_chave_pessoa"] = (
+        base["frente"].fillna("").astype(str).str.strip().str.lower() + "|" +
+        base["polo_base"].fillna("").astype(str).str.strip().str.lower() + "|" +
+        base["nome"].fillna("").astype(str).str.strip().str.lower()
+    )
+    return base.drop_duplicates("_chave_pessoa", keep="last").drop(columns=["_chave_pessoa"])
+
+
+def indicadores_mobilizacao_macro():
+    global df_pessoas
+    _df_original = df_pessoas
+    df_pessoas = _pessoas_unicas()
+    total_pessoas = len(df_pessoas)
+
+    # Na planilha oficial, "Admissão" é status (Aprovado/Pendente), não uma data.
+    # O Worker mantém esse status em data_admissao por compatibilidade com o banco atual.
+    contratados = _contar_aprovados_pessoas(["data_admissao", "admissao", "situacao"])
+
+    # Documentação: considera o funil da planilha-base (ASO, RH, SSMA, cadastro e aprovação cliente).
+    etapas_doc = [
+        ["aso"], ["docs_rh", "documentacao_enviada"], ["docs_ssma"],
+        ["cadastro_cliente"], ["aprovacao_cliente", "aprovado_aqua"],
+    ]
+    existentes = [grupo for grupo in etapas_doc if _coluna_pessoa(grupo)]
+    if total_pessoas and existentes:
+        aprov_etapas = sum(_contar_aprovados_pessoas(g) for g in existentes)
+        docs_pct = percentual_seguro(aprov_etapas, total_pessoas * len(existentes))
+        docs_detalhe = f"{docs_pct:.0f}% das etapas documentais aprovadas"
+    else:
+        docs_pct = 0.0
+        docs_detalhe = "Sem dados documentais"
+
+    frota_plan, frota_disp = recursos_por_categoria(["frota", "veículo", "veiculo", "carro", "moto"])
+    epi_plan, epi_disp = recursos_por_categoria(["epi", "fardamento", "uniforme", "bota", "camisa", "calça", "calca"])
+
+    resultado = [
+        ("Contratação de pessoal", percentual_seguro(contratados, total_pessoas), f"{contratados} contratados de {total_pessoas}"),
+        ("Frota", percentual_seguro(frota_disp, frota_plan), f"{frota_disp} disponíveis de {frota_plan}"),
+        ("Documentação / SSMA", docs_pct, docs_detalhe),
+        ("Fardamento & EPI", percentual_seguro(epi_disp, epi_plan), f"{epi_disp} disponíveis de {epi_plan}"),
+    ]
+    df_pessoas = _df_original
+    return resultado
+
+
+def card_macro(titulo, pct, detalhe):
+    if pct >= 100:
+        cor = STATUS_CORES["Concluído"]
+    elif pct > 0:
+        cor = STATUS_CORES["Em andamento"]
+    else:
+        cor = STATUS_CORES["Não iniciado"]
+    st.markdown(
+        f"""<div class='macro-card'>
+        <div class='macro-label'>{titulo}</div>
+        <div class='macro-value'>{pct:.0f}%</div>
+        <div class='progress-track'><div class='progress-fill' style='width:{pct:.1f}%;background:{cor};'></div></div>
+        <div class='macro-sub'>{detalhe}</div>
+        </div>""", unsafe_allow_html=True
+    )
+
+
+def salvar_atividade_api(atividade_id, payload):
+    erros = []
+    for metodo in ("patch", "put"):
+        try:
+            fn = getattr(requests, metodo)
+            r = fn(f"{API_URL}/atividades/{atividade_id}", json=payload, timeout=20)
+            if r.ok:
+                st.cache_data.clear()
+                return True, None
+            erros.append(f"{metodo.upper()}: HTTP {r.status_code}")
+        except Exception as exc:
+            erros.append(f"{metodo.upper()}: {exc}")
+    return False, " | ".join(erros)
+
+
+def editor_atividade(base, chave):
+    if base.empty or "id" not in base.columns:
+        st.info("Nenhuma atividade disponível para edição.")
+        return
+
+    opcoes = base.dropna(subset=["id"]).copy()
+    if opcoes.empty:
+        st.caption("Nenhuma atividade com ID disponível para edição.")
+        return
+
+    # Filtros para localizar rapidamente a atividade
+    cfr, cma = st.columns(2)
+    frentes = sorted([texto(x) for x in opcoes["frente"].dropna().unique() if texto(x)]) if "frente" in opcoes.columns else []
+    frente_sel = cfr.selectbox("Frente", ["Todas"] + frentes, key=f"edit_frente_{chave}")
+    base_filtrada = opcoes if frente_sel == "Todas" else opcoes[opcoes["frente"] == frente_sel]
+
+    macros = sorted([texto(x) for x in base_filtrada["macroetapa"].dropna().unique() if texto(x)]) if "macroetapa" in base_filtrada.columns else []
+    macro_sel = cma.selectbox("Macroetapa", ["Todas"] + macros, key=f"edit_macro_{chave}")
+    if macro_sel != "Todas":
+        base_filtrada = base_filtrada[base_filtrada["macroetapa"] == macro_sel]
+
+    rotulos = {
+        str(r["id"]): f"{texto(r.get('macroetapa'),'')} · {texto(r.get('atividade'))}"
+        for _, r in base_filtrada.iterrows()
+    }
+    if not rotulos:
+        st.info("Nenhuma atividade encontrada com esses filtros.")
+        return
+
+    atividade_id = st.selectbox(
+        "Atividade para editar", list(rotulos.keys()),
+        format_func=lambda x: rotulos[x], key=f"edit_id_{chave}"
+    )
+    row = opcoes[opcoes["id"].astype(str) == str(atividade_id)].iloc[0]
+
+    st.markdown("#### Dados da atividade")
+    c1, c2, c3 = st.columns([1.1, .7, 1.0])
+    status_atual = texto(row.get("status"), "Não iniciado")
+    idx = STATUS_VALIDOS.index(status_atual) if status_atual in STATUS_VALIDOS else 0
+    novo_status = c1.selectbox("Status", STATUS_VALIDOS, index=idx, key=f"edit_status_{chave}_{atividade_id}")
+
+    pct_atual = numero(row.get("percentual"))
+    # Regras automáticas: concluído=100; não iniciado=0. Nos demais, percentual é editável.
+    if novo_status == "Concluído":
+        novo_pct = 100
+        c2.number_input("%", min_value=0, max_value=100, value=100, disabled=True, key=f"edit_pct_done_{chave}_{atividade_id}")
+    elif novo_status == "Não iniciado":
+        novo_pct = 0
+        c2.number_input("%", min_value=0, max_value=100, value=0, disabled=True, key=f"edit_pct_zero_{chave}_{atividade_id}")
+    else:
+        novo_pct = c2.number_input("%", min_value=0, max_value=100, value=max(0,min(100,pct_atual)), step=5, key=f"edit_pct_{chave}_{atividade_id}")
+
+    prioridades = ["Crítica", "Alta", "Média", "Baixa"]
+    prioridade_atual = texto(row.get("prioridade"), "Média")
+    pidx = prioridades.index(prioridade_atual) if prioridade_atual in prioridades else 2
+    nova_prioridade = c3.selectbox("Prioridade", prioridades, index=pidx, key=f"edit_prio_{chave}_{atividade_id}")
+
+    c4, c5 = st.columns(2)
+    novo_resp = c4.text_input("Responsável", value=texto(row.get("responsavel"), ""), key=f"edit_resp_{chave}_{atividade_id}")
+    nova_dependencia = c5.text_input("Dependência", value=texto(row.get("dependencia"), ""), key=f"edit_dep_{chave}_{atividade_id}")
+
+    c6, c7 = st.columns(2)
+    prazo_atual = converter_data(row.get("data_prevista")) or date.today()
+    novo_prazo = c6.date_input("Prazo / data prevista", value=prazo_atual, format="DD/MM/YYYY", key=f"edit_prazo_{chave}_{atividade_id}")
+    polo_atual = texto(row.get("polo_base"), "")
+    novo_polo = c7.text_input("Polo / Base", value=polo_atual, key=f"edit_polo_{chave}_{atividade_id}")
+
+    novo_passo = st.text_area(
+        "Próximo passo / pendência", value=texto(row.get("pendencia_acao"), ""),
+        height=80, key=f"edit_passo_{chave}_{atividade_id}"
+    )
+    nova_obs = st.text_area(
+        "Observação", value=texto(row.get("observacao"), ""),
+        height=70, key=f"edit_obs_{chave}_{atividade_id}"
+    )
+
+    if st.button("Salvar alteração", type="primary", use_container_width=True, key=f"save_{chave}_{atividade_id}"):
+        payload = {
+            "status": novo_status,
+            "percentual": int(novo_pct),
+            "prioridade": nova_prioridade,
+            "responsavel": novo_resp,
+            "data_prevista": novo_prazo.isoformat(),
+            "dependencia": nova_dependencia,
+            "polo_base": novo_polo,
+            "pendencia_acao": novo_passo,
+            "observacao": nova_obs,
+        }
+        if novo_status == "Concluído":
+            payload["data_conclusao"] = date.today().isoformat()
+        elif status_atual == "Concluído" and novo_status != "Concluído":
+            payload["data_conclusao"] = None
+
+        ok, erro = salvar_atividade_api(atividade_id, payload)
+        if ok:
+            st.success("Atividade atualizada com sucesso.")
+            st.rerun()
+        else:
+            st.error("A alteração não foi gravada pela API. O Worker precisa aceitar PATCH/PUT para atividades. " + (erro or ""))
+
+
+
+def api_mutacao(metodo, rota, payload=None):
+    try:
+        r = requests.request(metodo, f"{API_URL}/{rota}", json=payload, timeout=20)
+        if r.ok:
+            st.cache_data.clear()
+            return True, None
+        detalhe = r.text[:400] if r.text else ""
+        return False, f"HTTP {r.status_code} {detalhe}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def criar_registro(rota, payload):
+    return api_mutacao("POST", rota, payload)
+
+
+def atualizar_registro(rota, registro_id, payload):
+    for metodo in ("PATCH", "PUT"):
+        ok, erro = api_mutacao(metodo, f"{rota}/{registro_id}", payload)
+        if ok:
+            return True, None
+    return False, erro
+
+
+def excluir_registro(rota, registro_id):
+    return api_mutacao("DELETE", f"{rota}/{registro_id}")
+
+
+def _opcoes_coluna(df, campo, extras=None):
+    vals = []
+    if not df.empty and campo in df.columns:
+        vals = [str(x).strip() for x in df[campo].dropna().tolist() if str(x).strip()]
+    vals += (extras or [])
+    return sorted(set(vals))
+
+
+
+def _norm(v):
+    if v is None:
+        return ""
+    try:
+        if pd.isna(v):
+            return ""
+    except Exception:
+        pass
+    txt = str(v).strip().lower()
+    txt = "".join(c for c in unicodedata.normalize("NFKD", txt) if not unicodedata.combining(c))
+    return " ".join(txt.split())
+
+
+def _iso_excel(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        return pd.to_datetime(v).date().isoformat()
+    except Exception:
+        return None
+
+
+def _pct_excel(v):
+    try:
+        x = float(v)
+        if x <= 1:
+            x *= 100
+        return int(round(max(0, min(100, x))))
+    except Exception:
+        return 0
+
+
+def _status_etapa(v):
+    t = _norm(v)
+    if not t:
+        return "Pendente"
+    if any(x in t for x in ["aprov", "conclu", "ok", "liberad", "entregue", "realiz"]):
+        return "Aprovado"
+    if any(x in t for x in ["analise", "andamento", "process", "aguard"]):
+        return "Em análise"
+    return str(v).strip()
+
+
+def analisar_planilha_mobilizacao(uploaded):
+    """Lê o modelo oficial sem gravar nada e devolve operações propostas."""
+    conteudo = uploaded.getvalue()
+    xls = pd.ExcelFile(io.BytesIO(conteudo))
+    operacoes, avisos = [], []
+
+    # Índices do banco atual para fazer UPSERT sem duplicar.
+    idx_atv = {}
+    if not df_atividades.empty:
+        for _, r in df_atividades.iterrows():
+            chave = (_norm(r.get("frente")), _norm(r.get("macroetapa")), _norm(r.get("atividade")))
+            idx_atv[chave] = r.to_dict()
+
+    # Índices de pessoas para UPSERT.
+    # Prioridade: CPF/Matrícula; na ausência, Frente + Nome.
+    # O polo NÃO entra na chave porque pode variar entre planilha e banco
+    # (ex.: Recife x Polo Recife), o que antes fazia o importador duplicar pessoas.
+    idx_pes_cpf, idx_pes_frente_nome = {}, {}
+    if not df_pessoas.empty:
+        for _, r in df_pessoas.iterrows():
+            registro = r.to_dict()
+            cpf = _norm(r.get("cpf_matricula", r.get("cpf")))
+            if cpf:
+                idx_pes_cpf[cpf] = registro
+            chave_nome = (_norm(r.get("frente")), _norm(r.get("nome")))
+            if chave_nome[0] and chave_nome[1]:
+                # Em caso de duplicidade já existente, conserva um ID válido
+                # para que novas sincronizações atualizem em vez de adicionar.
+                anterior = idx_pes_frente_nome.get(chave_nome)
+                if anterior is None or (anterior.get("id") is None and registro.get("id") is not None):
+                    idx_pes_frente_nome[chave_nome] = registro
+
+    idx_base = {}
+    if not df_polos.empty:
+        for _, r in df_polos.iterrows():
+            nome = r.get("nome", r.get("polo_base", r.get("base")))
+            chave = (_norm(r.get("frente")), _norm(nome))
+            idx_base[chave] = r.to_dict()
+
+    # 1) Checklists das três frentes
+    for frente in ["Leitura", "Cobrança", "Hidrometria"]:
+        if frente not in xls.sheet_names:
+            avisos.append(f"Aba {frente} não encontrada.")
+            continue
+        df = pd.read_excel(io.BytesIO(conteudo), sheet_name=frente, header=3)
+        for _, r in df.iterrows():
+            atividade = r.get("Item / Atividade")
+            macro = r.get("Macroetapa")
+            if not _norm(atividade):
+                continue
+            status = str(r.get("Status") or "Não iniciado").strip()
+            if status not in STATUS_VALIDOS:
+                status = "Não iniciado"
+            payload = {
+                "frente": frente,
+                "macroetapa": texto(macro, ""),
+                "atividade": texto(atividade, ""),
+                "prioridade": texto(r.get("Prioridade"), "Média"),
+                "status": status,
+                "percentual": 100 if status == "Concluído" else (0 if status == "Não iniciado" else _pct_excel(r.get("% Conclusão"))),
+                "responsavel": texto(r.get("Responsável"), ""),
+                "dependencia": texto(r.get("Dependência"), ""),
+                "data_prevista": _iso_excel(r.get("Data Prevista")),
+                "data_conclusao": _iso_excel(r.get("Data Conclusão")),
+                "evidencia_link": texto(r.get("Evidência / Link"), ""),
+            }
+            chave = (_norm(frente), _norm(macro), _norm(atividade))
+            atual = idx_atv.get(chave)
+            acao = "Atualizar" if atual and atual.get("id") is not None else "Adicionar"
+            operacoes.append({"tipo":"Atividade", "acao":acao, "id": atual.get("id") if atual else None,
+                              "chave": f"{frente} · {texto(macro,'')} · {texto(atividade,'')}", "payload":payload})
+
+    # 2) Aprovação nominal de funcionários
+    if "Aprovação Funcionários" in xls.sheet_names:
+        df = pd.read_excel(io.BytesIO(conteudo), sheet_name="Aprovação Funcionários", header=2)
+        # Mapeamento alinhado ao schema real da tabela pessoas no D1.
+        # "Admissão" é um STATUS da planilha; mantemos em data_admissao por compatibilidade.
+        mapa_status_texto = {"Admissão": "data_admissao"}
+        mapa_booleano = {
+            "ASO": "aso",
+            "Docs RH": "docs_rh",
+            "Docs SSMA": "docs_ssma",
+            "Fardamento": "fardamento",
+            "EPI": "epi",
+            "Integração": "integracao_ssma",
+            "Treinamento": "treinamento_operacional",
+            "Liberado para Campo": "liberado_campo",
+            "Aprovação Cliente": "aprovado_aqua",
+            "Cadastro Cliente": "documentacao_enviada",
+        }
+        for _, r in df.iterrows():
+            nome = r.get("Nome")
+            if not _norm(nome):
+                continue
+            frente = texto(r.get("Frente"), "")
+            polo = texto(r.get("Polo / Região / Varredura"), "")
+            cpf = texto(r.get("CPF / Matrícula"), "")
+            payload = {"frente":frente, "polo_base":polo, "nome":texto(nome,""), "cpf_matricula":cpf,
+                       "funcao":texto(r.get("Função"),""), "equipe":texto(r.get("Equipe"),"")}
+            for col, campo in mapa_status_texto.items():
+                if col in df.columns:
+                    payload[campo] = _status_etapa(r.get(col))
+            for col, campo in mapa_booleano.items():
+                if col in df.columns:
+                    payload[campo] = (_status_etapa(r.get(col)) == "Aprovado")
+            atual = idx_pes_cpf.get(_norm(cpf)) if _norm(cpf) else None
+            if atual is None:
+                atual = idx_pes_frente_nome.get((_norm(frente), _norm(nome)))
+            acao = "Atualizar" if atual and atual.get("id") is not None else "Adicionar"
+            operacoes.append({"tipo":"Pessoa", "acao":acao, "id":atual.get("id") if atual else None,
+                              "chave":f"{frente} · {polo} · {texto(nome,'')}", "payload":payload})
+    else:
+        avisos.append("Aba Aprovação Funcionários não encontrada.")
+
+    # 3) Escritórios e bases
+    if "Escritórios e Bases" in xls.sheet_names:
+        df = pd.read_excel(io.BytesIO(conteudo), sheet_name="Escritórios e Bases", header=2)
+        mapa_base = {"Imóvel":"imovel", "Energia":"energia", "Internet":"internet", "Mobiliário":"mobiliario",
+                     "TI":"ti", "Estoque":"estoque", "Sinalização":"sinalizacao", "SSMA Base":"ssma_base"}
+        for _, r in df.iterrows():
+            base = r.get("Base / Escritório")
+            frente = r.get("Frente")
+            if not _norm(base) or not _norm(frente):
+                continue
+            payload = {"frente":texto(frente,""), "nome":texto(base,""), "tipo":texto(r.get("Tipo"),""),
+                       "endereco":texto(r.get("Endereço"),""), "responsavel":texto(r.get("Responsável"),"")}
+            for col, campo in mapa_base.items():
+                if col in df.columns:
+                    payload[campo] = _status_etapa(r.get(col))
+            atual = idx_base.get((_norm(frente), _norm(base)))
+            acao = "Atualizar" if atual and atual.get("id") is not None else "Adicionar"
+            operacoes.append({"tipo":"Base", "acao":acao, "id":atual.get("id") if atual else None,
+                              "chave":f"{texto(frente,'')} · {texto(base,'')}", "payload":payload})
+    else:
+        avisos.append("Aba Escritórios e Bases não encontrada.")
+
+    return operacoes, avisos
+
+
+def executar_importacao(operacoes):
+    resultados = []
+    rota_por_tipo = {"Atividade":"atividades", "Pessoa":"pessoas", "Base":"polos"}
+    for op in operacoes:
+        rota = rota_por_tipo[op["tipo"]]
+        if op["acao"] == "Atualizar" and op.get("id") is not None:
+            ok, erro = atualizar_registro(rota, op["id"], op["payload"])
+        else:
+            ok, erro = criar_registro(rota, op["payload"])
+        resultados.append({"Tipo":op["tipo"], "Ação":op["acao"], "Registro":op["chave"],
+                           "Resultado":"OK" if ok else "Erro", "Detalhe":"" if ok else (erro or "")})
+    st.cache_data.clear()
+    return pd.DataFrame(resultados)
+
+
+def painel_importacao_excel():
+    st.markdown("### 📥 Atualizar via planilha")
+    st.caption("Use o mesmo Checklist de Mobilização. Primeiro fazemos a conferência; nada é gravado antes da sua confirmação.")
+    arquivo = st.file_uploader("Carregar planilha de mobilização", type=["xlsx"], key="import_excel_mob")
+    if arquivo is None:
+        st.info("O importador reconhece as abas Leitura, Cobrança, Hidrometria, Aprovação Funcionários e Escritórios e Bases.")
+        return
+    try:
+        operacoes, avisos = analisar_planilha_mobilizacao(arquivo)
+    except Exception as exc:
+        st.error(f"Não foi possível ler a planilha: {exc}")
+        return
+    for aviso in avisos:
+        st.warning(aviso)
+    if not operacoes:
+        st.warning("Nenhum registro válido foi encontrado.")
+        return
+    resumo = pd.DataFrame(operacoes)
+    cont = resumo.groupby(["tipo","acao"]).size().reset_index(name="Quantidade")
+    st.markdown("#### Prévia da sincronização")
+    st.dataframe(cont, use_container_width=True, hide_index=True)
+    prev = pd.DataFrame([{"Tipo":o["tipo"], "Ação":o["acao"], "Registro":o["chave"]} for o in operacoes])
+    st.dataframe(prev, use_container_width=True, hide_index=True, height=320)
+    st.caption(f"Total identificado: {len(operacoes)} registros. Pessoas existentes são reconhecidas por CPF/Matrícula ou Frente + Nome; somente pessoas realmente novas serão adicionadas.")
+    confirmar = st.checkbox("Conferi a prévia e autorizo a sincronização desta planilha.", key="confirm_import")
+    if st.button("Sincronizar planilha", type="primary", use_container_width=True, disabled=not confirmar, key="btn_sync_excel"):
+        with st.spinner("Sincronizando com o banco..."):
+            resultado = executar_importacao(operacoes)
+        ok = int((resultado["Resultado"] == "OK").sum())
+        erros = len(resultado) - ok
+        if erros == 0:
+            st.success(f"Sincronização concluída: {ok} registros processados com sucesso.")
+        else:
+            st.warning(f"Sincronização concluída com {ok} sucessos e {erros} erros. Veja os detalhes abaixo.")
+        st.dataframe(resultado, use_container_width=True, hide_index=True, height=360)
+
+
+def formulario_nova_pessoa():
+    st.markdown("### ➕ Adicionar colaborador")
+    st.caption("Cadastro baseado na aba ‘Aprovação Funcionários’: admissão, ASO, RH, SSMA, fardamento, EPI, cliente, integração, treinamento e acesso.")
+    with st.form("form_nova_pessoa", clear_on_submit=True):
+        a,b,c = st.columns(3)
+        frente = a.selectbox("Frente *", ["Leitura", "Cobrança", "Hidrometria"])
+        polos = _opcoes_coluna(df_polos, "nome", ["Recife", "Caruaru", "Arcoverde", "Serra Talhada", "Gravatá"])
+        polo = b.selectbox("Polo / Base *", polos if polos else ["Recife"])
+        nome = c.text_input("Nome *")
+        a,b,c = st.columns(3)
+        cpf = a.text_input("CPF / Matrícula")
+        funcao = b.text_input("Função")
+        equipe = c.text_input("Equipe")
+        st.markdown("#### Etapas de liberação")
+        cols = st.columns(4)
+        valores = {}
+        labels = {
+            "admissao":"Admissão", "aso":"ASO", "docs_rh":"Docs RH", "docs_ssma":"Docs SSMA",
+            "fardamento":"Fardamento", "epi":"EPI", "cadastro_cliente":"Cadastro Cliente",
+            "aprovacao_cliente":"Aprovação Cliente", "integracao":"Integração", "treinamento":"Treinamento",
+            "acesso_sistema":"Acesso Sistema"
+        }
+        for i,campo in enumerate(ETAPAS_PESSOA):
+            valores[campo] = cols[i % 4].selectbox(labels[campo], STATUS_ETAPA_PESSOA, key=f"np_{campo}")
+        observacao = st.text_area("Observação")
+        salvar = st.form_submit_button("Adicionar colaborador", type="primary", use_container_width=True)
+    if salvar:
+        if not nome.strip():
+            st.error("Informe o nome do colaborador.")
+            return
+        liberado = all(v in {"Aprovado", "Não se aplica"} for v in valores.values())
+        payload = {
+            "frente": frente, "polo_base": polo, "nome": nome.strip(), "cpf_matricula": cpf.strip(),
+            "funcao": funcao.strip(), "equipe": equipe.strip(), **valores,
+            "liberado_campo": 1 if liberado else 0, "observacao": observacao.strip(),
+        }
+        ok, erro = criar_registro("pessoas", payload)
+        if ok:
+            st.success(f"{nome} adicionado com sucesso.")
+            st.rerun()
+        else:
+            st.error("O formulário está pronto, mas a API ainda não aceitou o cadastro. Habilite POST /pessoas no Worker. " + (erro or ""))
+
+
+def formulario_editar_pessoa():
+    if df_pessoas.empty or "id" not in df_pessoas.columns:
+        st.info("Nenhum colaborador com ID disponível para edição.")
+        return
+    base = df_pessoas.dropna(subset=["id"]).copy()
+    if base.empty:
+        st.info("Nenhum colaborador com ID disponível para edição.")
+        return
+    labels = {str(r["id"]): f"{texto(r.get('nome'))} · {texto(r.get('frente'))} · {texto(r.get('polo_base'))}" for _,r in base.iterrows()}
+    pid = st.selectbox("Colaborador", list(labels), format_func=lambda x: labels[x], key="ep_id")
+    row = base[base["id"].astype(str)==str(pid)].iloc[0]
+    with st.form("form_editar_pessoa"):
+        a,b,c = st.columns(3)
+        frente_opts=["Leitura","Cobrança","Hidrometria"]
+        fr=texto(row.get("frente"),"Leitura"); frente=a.selectbox("Frente",frente_opts,index=frente_opts.index(fr) if fr in frente_opts else 0)
+        polo=b.text_input("Polo / Base", value=texto(row.get("polo_base"),""))
+        nome=c.text_input("Nome", value=texto(row.get("nome"),""))
+        a,b,c=st.columns(3)
+        cpf=a.text_input("CPF / Matrícula", value=texto(row.get("cpf_matricula", row.get("cpf")),""))
+        funcao=b.text_input("Função", value=texto(row.get("funcao"),""))
+        equipe=c.text_input("Equipe", value=texto(row.get("equipe"),""))
+        st.markdown("#### Etapas de liberação")
+        cols=st.columns(4); valores={}
+        labels_et={"admissao":"Admissão","aso":"ASO","docs_rh":"Docs RH","docs_ssma":"Docs SSMA","fardamento":"Fardamento","epi":"EPI","cadastro_cliente":"Cadastro Cliente","aprovacao_cliente":"Aprovação Cliente","integracao":"Integração","treinamento":"Treinamento","acesso_sistema":"Acesso Sistema"}
+        for i,campo in enumerate(ETAPAS_PESSOA):
+            atual=texto(row.get(campo),"Pendente")
+            idx=STATUS_ETAPA_PESSOA.index(atual) if atual in STATUS_ETAPA_PESSOA else 0
+            valores[campo]=cols[i%4].selectbox(labels_et[campo],STATUS_ETAPA_PESSOA,index=idx,key=f"ep_{campo}")
+        observacao=st.text_area("Observação", value=texto(row.get("observacao"),""))
+        salvar=st.form_submit_button("Salvar colaborador",type="primary",use_container_width=True)
+    if salvar:
+        liberado=all(v in {"Aprovado","Não se aplica"} for v in valores.values())
+        payload={"frente":frente,"polo_base":polo,"nome":nome,"cpf_matricula":cpf,"funcao":funcao,"equipe":equipe,**valores,"liberado_campo":1 if liberado else 0,"observacao":observacao}
+        ok,erro=atualizar_registro("pessoas",pid,payload)
+        if ok:
+            st.success("Colaborador atualizado."); st.rerun()
+        else:
+            st.error("A API ainda não aceitou a atualização de pessoas. " + (erro or ""))
+
+
+def formulario_novo_recurso():
+    st.markdown("### ➕ Adicionar recurso")
+    with st.form("form_novo_recurso", clear_on_submit=True):
+        a,b,c=st.columns(3)
+        frente=a.selectbox("Frente",["Leitura","Cobrança","Hidrometria"],key="nr_fr")
+        polo=b.text_input("Polo / Base",value="Recife")
+        categoria=c.selectbox("Categoria",["Frota","Fardamento","EPI","Ferramenta","Equipamento","Material","TI","Outro"])
+        a,b,c=st.columns(3)
+        descricao=a.text_input("Descrição *")
+        identificacao=b.text_input("Identificação / Placa")
+        status=c.selectbox("Status",STATUS_VALIDOS)
+        a,b=st.columns(2)
+        planejado=a.number_input("Quantidade necessária",min_value=0,value=0,step=1)
+        disponivel=b.number_input("Quantidade disponível",min_value=0,value=0,step=1)
+        responsavel=st.text_input("Responsável")
+        observacao=st.text_area("Observação")
+        salvar=st.form_submit_button("Adicionar recurso",type="primary",use_container_width=True)
+    if salvar:
+        if not descricao.strip(): st.error("Informe a descrição do recurso."); return
+        payload={"frente":frente,"polo_base":polo,"categoria":categoria,"descricao":descricao,"identificacao":identificacao,"quantidade_planejada":int(planejado),"quantidade_disponivel":int(disponivel),"status":status,"responsavel":responsavel,"observacao":observacao}
+        ok,erro=criar_registro("recursos",payload)
+        if ok: st.success("Recurso adicionado."); st.rerun()
+        else: st.error("A API ainda não aceitou POST /recursos. " + (erro or ""))
+
+
+def formulario_editar_recurso():
+    if df_recursos.empty or "id" not in df_recursos.columns:
+        st.info("Nenhum recurso com ID disponível para edição."); return
+    base=df_recursos.dropna(subset=["id"]).copy()
+    labels={str(r["id"]):f"{texto(r.get('categoria'))} · {texto(r.get('descricao'))} · {texto(r.get('polo_base'))}" for _,r in base.iterrows()}
+    rid=st.selectbox("Recurso",list(labels),format_func=lambda x:labels[x],key="er_id")
+    row=base[base["id"].astype(str)==str(rid)].iloc[0]
+    with st.form("form_editar_recurso"):
+        a,b,c=st.columns(3)
+        frente=a.text_input("Frente",value=texto(row.get("frente"),"")); polo=b.text_input("Polo / Base",value=texto(row.get("polo_base"),"")); categoria=c.text_input("Categoria",value=texto(row.get("categoria"),""))
+        descricao=st.text_input("Descrição",value=texto(row.get("descricao"),""))
+        a,b=st.columns(2); planejado=a.number_input("Quantidade necessária",min_value=0,value=numero(row.get("quantidade_planejada")),step=1); disponivel=b.number_input("Quantidade disponível",min_value=0,value=numero(row.get("quantidade_disponivel")),step=1)
+        status_at=texto(row.get("status"),"Não iniciado"); idx=STATUS_VALIDOS.index(status_at) if status_at in STATUS_VALIDOS else 0
+        status=st.selectbox("Status",STATUS_VALIDOS,index=idx); obs=st.text_area("Observação",value=texto(row.get("observacao"),""))
+        salvar=st.form_submit_button("Salvar recurso",type="primary",use_container_width=True)
+    if salvar:
+        ok,erro=atualizar_registro("recursos",rid,{"frente":frente,"polo_base":polo,"categoria":categoria,"descricao":descricao,"quantidade_planejada":int(planejado),"quantidade_disponivel":int(disponivel),"status":status,"observacao":obs})
+        if ok: st.success("Recurso atualizado."); st.rerun()
+        else: st.error("A API ainda não aceitou a atualização do recurso. " + (erro or ""))
+
+
+def formulario_nova_base():
+    st.markdown("### ➕ Adicionar base / escritório")
+    with st.form("form_nova_base", clear_on_submit=True):
+        a,b,c=st.columns(3); frente=a.selectbox("Frente",["Leitura","Cobrança","Hidrometria"],key="nb_fr"); nome=b.text_input("Base / Escritório *"); tipo=c.text_input("Tipo")
+        endereco=st.text_input("Endereço"); responsavel=st.text_input("Responsável")
+        st.markdown("#### Prontidão da base")
+        cols=st.columns(4); checks={}
+        for i,campo in enumerate(["imovel","energia","internet","mobiliario","ti","estoque","sinalizacao","ssma_base"]):
+            checks[campo]=cols[i%4].checkbox(campo.replace("_"," ").title(),key=f"nb_{campo}")
+        pendencia=st.text_area("Pendência")
+        salvar=st.form_submit_button("Adicionar base",type="primary",use_container_width=True)
+    if salvar:
+        if not nome.strip(): st.error("Informe o nome da base."); return
+        payload={"frente":frente,"nome":nome,"tipo":tipo,"endereco":endereco,"responsavel":responsavel,**{k:1 if v else 0 for k,v in checks.items()},"pendencia":pendencia}
+        ok,erro=criar_registro("polos",payload)
+        if ok: st.success("Base adicionada."); st.rerun()
+        else: st.error("A API ainda não aceitou POST /polos. " + (erro or ""))
+
+
+def painel_ssma():
+    st.markdown("### SSMA e documentação")
+    if df_pessoas.empty:
+        st.info("Cadastre colaboradores para acompanhar SSMA."); return
+    total=len(df_pessoas)
+    itens=[("ASO",["aso"]),("Docs RH",["docs_rh","documentacao_enviada"]),("Docs SSMA",["docs_ssma"]),("Cadastro Cliente",["cadastro_cliente"]),("Aprovação Cliente",["aprovacao_cliente","aprovado_aqua"]),("Integração",["integracao"]),("Treinamento",["treinamento"]),("Acesso Sistema",["acesso_sistema"])]
+    cols=st.columns(4)
+    for i,(nome,cands) in enumerate(itens):
+        n=_contar_aprovados_pessoas(cands); pct=percentual_seguro(n,total)
+        with cols[i%4]: card_macro(nome,pct,f"{n} de {total}")
+
+
+def cabecalho(titulo, subtitulo=None):
+    st.markdown(
+        f"<h1 class='titulo-pagina'>{titulo}</h1>",
+        unsafe_allow_html=True,
+    )
+
+    if subtitulo:
+        st.markdown(
+            f"<div class='subtitulo'>{subtitulo}</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def indicadores_frente(nome_frente):
+    if df_resumo.empty or "frente" not in df_resumo.columns:
+        return
+
+    linha = df_resumo[df_resumo["frente"] == nome_frente]
+
+    if linha.empty:
+        return
+
+    linha = linha.iloc[0]
+
+    total = numero(linha.get("total"))
+    concluidos = numero(linha.get("concluidos"))
+    andamento = numero(linha.get("em_andamento"))
+    aqua = numero(linha.get("aguardando_aqua"))
+    nao_iniciado = numero(linha.get("nao_iniciados"))
+    cancelados = numero(linha.get("cancelados"))
+
+    pct = percentual_mobilizacao(total, concluidos, cancelados)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    c1.metric("Mobilização", f"{pct:.1f}%")
+    c2.metric("Concluídos", concluidos)
+    c3.metric("Em andamento", andamento)
+    c4.metric("Aguardando Aqua", aqua)
+    c5.metric("Não iniciados", nao_iniciado)
+
+
+def pagina_frente(nome_frente):
+    cabecalho(
+        nome_frente,
+        f"Acompanhamento da mobilização da frente de {nome_frente.lower()}.",
+    )
+
+    indicadores_frente(nome_frente)
+
+    if df_atividades.empty:
+        st.info("Não há atividades disponíveis.")
+        return
+
+    base = df_atividades[
+        df_atividades["frente"] == nome_frente
+    ].copy()
+
+    st.markdown("## Pontos de atenção")
+
+    criticos = pontos_criticos(base, 6)
+
+    if criticos.empty:
+        st.success("Nenhum ponto crítico identificado nesta frente.")
+    else:
+        for _, row in criticos.iterrows():
+            prazo = data_br(row.get("data_prevista"))
+
+            marcadores = []
+
+            if bool(row.get("atrasada")):
+                marcadores.append("ATRASADA")
+
+            if row.get("status") == "Aguardando Aqua":
+                marcadores.append("AGUARDANDO AQUA")
+
+            if bool(row.get("prazo_proximo")):
+                marcadores.append("PRAZO PRÓXIMO")
+
+            if texto(row.get("prioridade"), ""):
+                marcadores.append(texto(row.get("prioridade")))
+
+            tags = " ".join(
+                [f"<span class='tag' style='color:{STATUS_CORES.get('Em andamento','#FFB020') if x != 'ATRASADA' else '#FF4D6D'}'>{'● ' if x == 'ATRASADA' else ''}{x}</span>" for x in marcadores]
+            )
+
+            st.markdown(
+                f"""
+                <div class="card">
+                    <div class="card-titulo">
+                        {texto(row.get("atividade"))}
+                    </div>
+                    <div>{tags}</div>
+                    <div class="card-texto">
+                        <b>Responsável:</b> {texto(row.get("responsavel"))}
+                        &nbsp;&nbsp;|&nbsp;&nbsp;
+                        <b>Prazo:</b> {prazo}<br>
+                        <b>Próximo passo:</b> {proximo_passo(row)}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("## Atividades")
+
+    macroetapas = sorted(
+        [
+            x
+            for x in base["macroetapa"].dropna().unique().tolist()
+            if str(x).strip()
+        ]
+    )
+
+    f1, f2, f3 = st.columns([1.4, 1.2, 1.2])
+
+    macro = f1.selectbox(
+        "Macroetapa",
+        ["Todas"] + macroetapas,
+        key=f"macro_{nome_frente}",
+    )
+
+    status = f2.selectbox(
+        "Status",
+        ["Todos"] + STATUS_VALIDOS,
+        key=f"status_{nome_frente}",
+    )
+
+    prioridade = f3.selectbox(
+        "Prioridade",
+        ["Todas", "Crítica", "Alta", "Média", "Baixa"],
+        key=f"prioridade_{nome_frente}",
+    )
+
+    filtrado = base.copy()
+
+    if macro != "Todas":
+        filtrado = filtrado[filtrado["macroetapa"] == macro]
+
+    if status != "Todos":
+        filtrado = filtrado[filtrado["status"] == status]
+
+    if prioridade != "Todas":
+        filtrado = filtrado[filtrado["prioridade"] == prioridade]
+
+    tabela_atividades(filtrado)
+
+    with st.expander("✏️ Editar atividade diretamente no painel", expanded=False):
+        editor_atividade(base, nome_frente)
+
+    st.markdown("## Critério de aceite e evidências")
+
+    detalhes = base[
+        [
+            "atividade",
+            "criterio_aceite",
+            "evidencia",
+            "observacao",
+        ]
+    ].copy()
+
+    detalhes = detalhes.rename(
+        columns={
+            "atividade": "Atividade",
+            "criterio_aceite": "Critério de aceite",
+            "evidencia": "Evidência",
+            "observacao": "Observação",
+        }
+    )
+
+    st.dataframe(
+        detalhes,
+        use_container_width=True,
+        hide_index=True,
+        height=330,
+    )
+
+
+# ============================================================
+# MOBILIZAÇÃO TERRITORIAL V3
+# ============================================================
+
+ABAS_OPERACIONAIS = ["Cobrança RMR", "Cobrança Interior", "Hidrometria", "Leitura"]
+COLUNAS_MOBILIZACAO = [
+    "ID Único Equipe / Agente", "Nome da Equipe", "Nome do Colaborador Líder",
+    "Base de Apoio Enorsul", "Município de Origem", "Polo", "Microrrota",
+    "Município de Atendimento", "Tipo de Equipe", "Habilidades / Serviços Aptos",
+    "Status da Equipe", "Frente Principal", "Veículo Disponível", "Observação",
+]
+STATUS_EQUIPE = ["Em recrutamento", "Em contratação", "Contratada", "Mobilizada"]
+
+
+def _limpar_excel(v):
+    if pd.isna(v): return None
+    if isinstance(v, (pd.Timestamp, datetime, date)): return v.isoformat()
+    t = str(v).strip()
+    return t if t else None
+
+
+def ler_planilha_v3(arquivo):
+    xls = pd.ExcelFile(arquivo)
+    faltantes = [a for a in ABAS_OPERACIONAIS if a not in xls.sheet_names]
+    if faltantes:
+        raise ValueError("Abas obrigatórias ausentes: " + ", ".join(faltantes))
+    linhas=[]
+    for aba in ABAS_OPERACIONAIS:
+        df=pd.read_excel(xls, sheet_name=aba, dtype=object)
+        cols=[c for c in COLUNAS_MOBILIZACAO if c not in df.columns]
+        if cols:
+            raise ValueError(f"Aba {aba}: colunas ausentes: " + ", ".join(cols))
+        for _,r in df.iterrows():
+            uid=_limpar_excel(r["ID Único Equipe / Agente"])
+            if not uid: continue
+            item={c:_limpar_excel(r[c]) for c in COLUNAS_MOBILIZACAO}
+            item["aba_origem"]=aba
+            linhas.append(item)
+    if not linhas: raise ValueError("Nenhuma linha operacional com ID Único foi encontrada.")
+    # Consistência: um ID representa uma única equipe/agente; cobertura pode repetir.
+    base=pd.DataFrame(linhas)
+    conflitos=[]
+    for uid,g in base.groupby("ID Único Equipe / Agente"):
+        for campo in ["Nome da Equipe","Nome do Colaborador Líder","Tipo de Equipe","Status da Equipe","Frente Principal"]:
+            vals={str(x).strip() for x in g[campo].dropna() if str(x).strip()}
+            if len(vals)>1: conflitos.append(f"{uid}: {campo} possui {len(vals)} valores")
+    return linhas, conflitos
+
+
+def sincronizar_mobilizacao_v3(linhas, responsavel):
+    resp=requests.post(f"{API_URL}/mobilizacao/sincronizar", json={"atualizado_por":responsavel,"linhas":linhas}, timeout=90)
+    if not resp.ok:
+        try: detalhe=resp.json().get("erro", resp.text)
+        except Exception: detalhe=resp.text
+        raise RuntimeError(detalhe)
+    st.cache_data.clear()
+    return resp.json()
+
+
+def painel_carga_v3():
+    st.markdown("### 📥 Carga oficial de equipes e cobertura")
+    st.caption("A carga usa ID Único para efetivo e preserva cada linha da planilha como vínculo territorial.")
+    arq=st.file_uploader("Planilha Aqua", type=["xlsx"], key="upload_v3")
+    responsavel=st.text_input("Responsável pela carga", value="Leandro", key="resp_v3")
+    if arq is None: return
+    try: linhas, conflitos=ler_planilha_v3(arq)
+    except Exception as exc:
+        st.error(str(exc)); return
+    df=pd.DataFrame(linhas)
+    ids=df["ID Único Equipe / Agente"].nunique()
+    c1,c2,c3=st.columns(3); c1.metric("Efetivo único", ids); c2.metric("Vínculos territoriais",len(df)); c3.metric("Polos",df["Polo"].nunique())
+    if conflitos:
+        st.error("A carga tem conflitos no mesmo ID Único e foi bloqueada.")
+        st.dataframe(pd.DataFrame({"Conflito":conflitos}),use_container_width=True,hide_index=True); return
+    st.dataframe(df[["ID Único Equipe / Agente","Frente Principal","Polo","Microrrota","Município de Atendimento","Status da Equipe"]],use_container_width=True,hide_index=True,height=330)
+    ok=st.checkbox("Conferi a prévia e autorizo substituir a fotografia atual de mobilização.", key="autoriza_v3")
+    if st.button("Sincronizar mobilização",type="primary",disabled=not ok,use_container_width=True,key="sync_v3"):
+        try:
+            with st.spinner("Gravando equipes e cobertura no D1..."): r=sincronizar_mobilizacao_v3(linhas,responsavel.strip() or "Carga Aqua")
+            st.success(f"Carga concluída: {r.get('equipes',0)} equipes/agentes únicos e {r.get('coberturas',0)} vínculos territoriais.")
+            st.rerun()
+        except Exception as exc: st.error(f"Falha na sincronização: {exc}")
+
+
+def visao_mobilizacao_v3():
+    cabecalho("Aqua Pernambuco | Mobilização Operacional", "Visão executiva por efetivo único e cobertura territorial · RMR–Pajeú")
+    if df_equipes.empty:
+        st.info("Ainda não há fotografia V3 carregada. Vá em Atualizar dados → Carga Mobilização V3.")
+        return
+    base=df_equipes.copy(); cob=df_cobertura.copy()
+    a,b,c,d=st.columns(4)
+    frente=a.selectbox("Frente",["Todas"]+sorted(base.get("frente_principal",pd.Series(dtype=str)).dropna().unique().tolist()),key="v3_frente")
+    polos=sorted(cob.get("polo",pd.Series(dtype=str)).dropna().unique().tolist())
+    polo=b.selectbox("Polo",["Todos"]+polos,key="v3_polo")
+    mrs=sorted(cob.loc[cob["polo"].eq(polo),"microrrota"].dropna().unique().tolist()) if polo!="Todos" and not cob.empty else sorted(cob.get("microrrota",pd.Series(dtype=str)).dropna().unique().tolist())
+    mr=c.selectbox("Microrrota",["Todas"]+mrs,key="v3_mr")
+    status=d.selectbox("Status",["Todos"]+STATUS_EQUIPE,key="v3_status")
+    ids=set(base["id_unico"].astype(str))
+    if polo!="Todos": ids &= set(cob.loc[cob["polo"].eq(polo),"id_unico"].astype(str))
+    if mr!="Todas": ids &= set(cob.loc[cob["microrrota"].eq(mr),"id_unico"].astype(str))
+    f=base[base["id_unico"].astype(str).isin(ids)].copy()
+    if frente!="Todas": f=f[f["frente_principal"].eq(frente)]
+    if status!="Todos": f=f[f["status_equipe"].eq(status)]
+    k1,k2,k3,k4,k5=st.columns(5)
+    k1.metric("Efetivo",f["id_unico"].nunique())
+    for col,rot in zip([k2,k3,k4,k5],STATUS_EQUIPE): col.metric(rot,int(f["status_equipe"].eq(rot).sum()))
+    st.markdown("## Cobertura territorial")
+    left,right=st.columns([1.15,1.85])
+    with left:
+        if cob.empty: st.info("Sem vínculos territoriais.")
+        else:
+            cc=cob[cob["id_unico"].astype(str).isin(set(f["id_unico"].astype(str)))]
+            resumo=cc.groupby("polo",dropna=False).agg(Equipes=("id_unico","nunique"),Microrrotas=("microrrota","nunique"),Municipios=("municipio_atendimento","nunique")).reset_index().rename(columns={"polo":"Polo"})
+            st.dataframe(resumo,use_container_width=True,hide_index=True)
+    with right:
+        st.markdown("### Mapa de Pernambuco")
+        st.info("Mapa geográfico preparado para a aba Microrrotas. Os pontos serão ativados quando latitude/longitude forem preenchidas, sem estimar coordenadas.")
+        st.markdown("**9 polos operacionais · 38 microrrotas · 151 municípios**")
+    st.markdown("## Equipes / Agentes")
+    cols=[x for x in ["id_unico","nome_equipe","nome_lider","frente_principal","tipo_equipe","status_equipe","veiculo_disponivel"] if x in f.columns]
+    st.dataframe(f[cols].rename(columns={"id_unico":"ID Único","nome_equipe":"Equipe","nome_lider":"Líder","frente_principal":"Frente","tipo_equipe":"Tipo","status_equipe":"Status","veiculo_disponivel":"Veículo"}),use_container_width=True,hide_index=True,height=420)
+
+# ============================================================
+# NAVEGAÇÃO
+# ============================================================
+
+with st.sidebar:
+    st.markdown("## Mobilização")
+    st.caption("Aqua Pernambuco · Enorsul")
+
+    pagina = st.radio(
+        "Navegação",
+        [
+            "Visão Geral",
+            "Cobertura Territorial",
+            "Leitura",
+            "Cobrança",
+            "Hidrometria",
+            "Pessoas & Estrutura",
+            "Atualizar dados",
+            "Cronograma & Rampagem",
+            "Modo Reunião",
+        ],
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    dias = (GO_LIVE - date.today()).days
+
+    st.metric("Go-Live", "26/10/2026")
+    st.caption(f"{dias} dias para o início operacional")
+
+    if st.button("Atualizar dados", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+# ============================================================
+# 1. VISÃO GERAL
+# ============================================================
+
+if pagina == "Visão Geral":
+    visao_mobilizacao_v3()
+
+elif pagina == "Cobertura Territorial":
+    visao_mobilizacao_v3()
+
+elif pagina == "Leitura":
+    pagina_frente("Leitura")
+
+elif pagina == "Cobrança":
+    pagina_frente("Cobrança")
+
+elif pagina == "Hidrometria":
+    pagina_frente("Hidrometria")
+
+# ============================================================
+# 5. PESSOAS & ESTRUTURA
+# ============================================================
+
+elif pagina == "Pessoas & Estrutura":
+    cabecalho(
+        "Pessoas & Estrutura",
+        "Visão interna da mobilização de pessoas, bases e recursos.",
+    )
+
+    total_pessoas = len(df_pessoas)
+
+    def soma_flag(campo):
+        if df_pessoas.empty or campo not in df_pessoas.columns:
+            return 0
+
+        return int(
+            pd.to_numeric(
+                df_pessoas[campo], errors="coerce"
+            ).fillna(0).sum()
+        )
+
+    doc = soma_flag("documentacao_enviada")
+    aprovados = soma_flag("aprovado_aqua")
+    integrados = soma_flag("integrado")
+    campo = soma_flag("liberado_campo")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    c1.metric("Pessoas cadastradas", total_pessoas)
+    c2.metric("Documentação enviada", doc)
+    c3.metric("Aprovados Aqua", aprovados)
+    c4.metric("Integrados", integrados)
+    c5.metric("Liberados para campo", campo)
+
+    st.markdown("## Indicadores macro de mobilização")
+    g1, g2, g3, g4 = st.columns(4)
+    macros = indicadores_mobilizacao_macro()
+    for coluna, item in zip([g1, g2, g3, g4], macros):
+        with coluna:
+            card_macro(*item)
+
+    tab1, tab2, tab3 = st.tabs(
+        ["Pessoas", "Polos e Bases", "Recursos"]
+    )
+
+    with tab1:
+        st.caption(
+            "Base nominal de uso interno. Não é exibida no Modo Reunião."
+        )
+
+        if df_pessoas.empty:
+            st.info("Nenhuma pessoa cadastrada.")
+        else:
+            pessoas = df_pessoas.copy()
+
+            colunas = [
+                "nome",
+                "frente",
+                "polo_base",
+                "funcao",
+                "situacao",
+                "documentacao_enviada",
+                "aprovado_aqua",
+                "integrado",
+                "liberado_campo",
+                "data_admissao",
+                "observacao",
+            ]
+
+            colunas = [
+                c for c in colunas if c in pessoas.columns
+            ]
+
+            pessoas = pessoas[colunas].rename(
+                columns={
+                    "nome": "Nome",
+                    "frente": "Frente",
+                    "polo_base": "Polo/Base",
+                    "funcao": "Função",
+                    "situacao": "Situação",
+                    "documentacao_enviada": "Documentação enviada",
+                    "aprovado_aqua": "Aprovado Aqua",
+                    "integrado": "Integrado",
+                    "liberado_campo": "Liberado para campo",
+                    "data_admissao": "Admissão",
+                    "observacao": "Observação",
+                }
+            )
+
+            st.dataframe(
+                pessoas,
+                use_container_width=True,
+                hide_index=True,
+                height=460,
+            )
+
+    with tab2:
+        if df_polos.empty:
+            st.info("Nenhum polo/base cadastrado.")
+        else:
+            polos = df_polos.copy()
+
+            colunas = [
+                "nome",
+                "tipo",
+                "regiao",
+                "municipio_referencia",
+                "observacao",
+            ]
+
+            colunas = [
+                c for c in colunas if c in polos.columns
+            ]
+
+            polos = polos[colunas].rename(
+                columns={
+                    "nome": "Polo/Base",
+                    "tipo": "Tipo",
+                    "regiao": "Região",
+                    "municipio_referencia": "Município de referência",
+                    "observacao": "Observação",
+                }
+            )
+
+            st.dataframe(
+                polos,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    with tab3:
+        if df_recursos.empty:
+            st.info(
+                "Nenhum recurso cadastrado na base neste momento."
+            )
+        else:
+            recursos = df_recursos.copy()
+
+            colunas = [
+                "frente",
+                "polo_base",
+                "categoria",
+                "descricao",
+                "identificacao",
+                "quantidade_planejada",
+                "quantidade_disponivel",
+                "status",
+                "responsavel",
+                "observacao",
+            ]
+
+            colunas = [
+                c for c in colunas if c in recursos.columns
+            ]
+
+            recursos = recursos[colunas].rename(
+                columns={
+                    "frente": "Frente",
+                    "polo_base": "Polo/Base",
+                    "categoria": "Categoria",
+                    "descricao": "Descrição",
+                    "identificacao": "Identificação",
+                    "quantidade_planejada": "Planejado",
+                    "quantidade_disponivel": "Disponível",
+                    "status": "Status",
+                    "responsavel": "Responsável",
+                    "observacao": "Observação",
+                }
+            )
+
+            st.dataframe(
+                recursos,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+# ============================================================
+# 6. ATUALIZAR DADOS
+# ============================================================
+
+elif pagina == "Atualizar dados":
+    cabecalho("Atualizar dados", "Cadastre e atualize a mobilização sem alterar planilhas ou código.")
+    st.info("As inclusões e alterações são gravadas pela API. O Worker precisa aceitar POST/PATCH/PUT nas rotas pessoas, recursos e polos.")
+    t0,t1,t2,t3,t4,t5,t6 = st.tabs(["📝 Atividades", "👥 Pessoas", "🚗 Frota / Recursos", "🦺 Documentação & SSMA", "🏢 Bases", "📥 Importar legado", "📥 Carga Mobilização V3"])
+    with t0:
+        st.markdown("### Editar atividade")
+        st.caption("Altere status, percentual, prazo, prioridade, responsável, dependência e próximo passo. Concluído define automaticamente 100%; Não iniciado define 0%.")
+        editor_atividade(df_atividades, "central")
+    with t1:
+        sub1,sub2=st.tabs(["Adicionar","Editar"])
+        with sub1: formulario_nova_pessoa()
+        with sub2: formulario_editar_pessoa()
+    with t2:
+        sub1,sub2=st.tabs(["Adicionar","Editar"])
+        with sub1: formulario_novo_recurso()
+        with sub2: formulario_editar_recurso()
+    with t3:
+        painel_ssma()
+        st.caption("A liberação para campo é calculada quando todas as etapas aplicáveis do colaborador estão aprovadas.")
+    with t4:
+        formulario_nova_base()
+    with t5:
+        painel_importacao_excel()
+    with t6:
+        painel_carga_v3()
+
+# ============================================================
+# 7. CRONOGRAMA & RAMPAGEM
+# ============================================================
+
+elif pagina == "Cronograma & Rampagem":
+    cabecalho(
+        "Cronograma & Rampagem",
+        "Prazos da implantação e evolução planejada versus mobilizada.",
+    )
+
+    tab1, tab2 = st.tabs(["Cronograma", "Rampagem"])
+
+    with tab1:
+        if df_atividades.empty:
+            st.info("Nenhuma atividade cadastrada.")
+        else:
+            cronograma = df_atividades.copy()
+
+            f1, f2 = st.columns(2)
+
+            frente = f1.selectbox(
+                "Frente",
+                ["Todas"]
+                + sorted(
+                    cronograma["frente"]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                ),
+                key="cron_frente",
+            )
+
+            situacao = f2.selectbox(
+                "Situação",
+                [
+                    "Todas",
+                    "Atrasadas",
+                    "Prazo próximo",
+                    "Aguardando Aqua",
+                    "Em aberto",
+                    "Concluídas",
+                ],
+                key="cron_situacao",
+            )
+
+            if frente != "Todas":
+                cronograma = cronograma[
+                    cronograma["frente"] == frente
+                ]
+
+            if situacao == "Atrasadas":
+                cronograma = cronograma[cronograma["atrasada"]]
+
+            elif situacao == "Prazo próximo":
+                cronograma = cronograma[
+                    cronograma["prazo_proximo"]
+                ]
+
+            elif situacao == "Aguardando Aqua":
+                cronograma = cronograma[
+                    cronograma["status"] == "Aguardando Aqua"
+                ]
+
+            elif situacao == "Em aberto":
+                cronograma = cronograma[
+                    ~cronograma["status"].isin(
+                        ["Concluído", "Cancelado"]
+                    )
+                ]
+
+            elif situacao == "Concluídas":
+                cronograma = cronograma[
+                    cronograma["status"] == "Concluído"
+                ]
+
+            cronograma["Início"] = cronograma[
+                "data_inicio"
+            ].apply(data_br)
+
+            cronograma["Prazo"] = cronograma[
+                "data_prevista"
+            ].apply(data_br)
+
+            cronograma["Conclusão"] = cronograma[
+                "data_conclusao"
+            ].apply(data_br)
+
+            colunas = [
+                "frente",
+                "macroetapa",
+                "atividade",
+                "Início",
+                "Prazo",
+                "Conclusão",
+                "dependencia",
+                "prioridade",
+                "status",
+                "responsavel",
+            ]
+
+            colunas = [
+                c for c in colunas if c in cronograma.columns
+            ]
+
+            cronograma = cronograma[colunas].rename(
+                columns={
+                    "frente": "Frente",
+                    "macroetapa": "Macroetapa",
+                    "atividade": "Atividade",
+                    "dependencia": "Dependência",
+                    "prioridade": "Prioridade",
+                    "status": "Status",
+                    "responsavel": "Responsável",
+                }
+            )
+
+            st.dataframe(
+                cronograma,
+                use_container_width=True,
+                hide_index=True,
+                height=550,
+            )
+
+    with tab2:
+        if df_rampagem.empty:
+            st.info("Nenhuma rampagem cadastrada.")
+        else:
+            ramp = df_rampagem.copy()
+
+            for campo in [
+                "equipes_planejadas",
+                "equipes_mobilizadas",
+                "pessoas_planejadas",
+                "pessoas_mobilizadas",
+                "veiculos_planejados",
+                "veiculos_mobilizados",
+            ]:
+                if campo not in ramp.columns:
+                    ramp[campo] = 0
+
+                ramp[campo] = pd.to_numeric(
+                    ramp[campo], errors="coerce"
+                ).fillna(0)
+
+            frentes_ramp = sorted(
+                ramp["frente"].dropna().unique().tolist()
+            )
+
+            filtro_frente = st.selectbox(
+                "Frente",
+                ["Todas"] + frentes_ramp,
+                key="ramp_frente",
+            )
+
+            if filtro_frente != "Todas":
+                ramp = ramp[ramp["frente"] == filtro_frente]
+
+            c1, c2, c3 = st.columns(3)
+
+            c1.metric(
+                "Equipes planejadas",
+                int(ramp["equipes_planejadas"].sum()),
+            )
+
+            c2.metric(
+                "Equipes mobilizadas",
+                int(ramp["equipes_mobilizadas"].sum()),
+            )
+
+            c3.metric(
+                "Veículos planejados",
+                int(ramp["veiculos_planejados"].sum()),
+            )
+
+            exibicao = ramp.copy()
+
+            colunas = [
+                "frente",
+                "polo_base",
+                "periodo",
+                "equipes_planejadas",
+                "equipes_mobilizadas",
+                "pessoas_planejadas",
+                "pessoas_mobilizadas",
+                "veiculos_planejados",
+                "veiculos_mobilizados",
+                "observacao",
+            ]
+
+            colunas = [
+                c for c in colunas if c in exibicao.columns
+            ]
+
+            exibicao = exibicao[colunas].rename(
+                columns={
+                    "frente": "Frente",
+                    "polo_base": "Polo/Base",
+                    "periodo": "Período",
+                    "equipes_planejadas": "Equipes planejadas",
+                    "equipes_mobilizadas": "Equipes mobilizadas",
+                    "pessoas_planejadas": "Pessoas planejadas",
+                    "pessoas_mobilizadas": "Pessoas mobilizadas",
+                    "veiculos_planejados": "Veículos planejados",
+                    "veiculos_mobilizados": "Veículos mobilizados",
+                    "observacao": "Observação",
+                }
+            )
+
+            st.dataframe(
+                exibicao,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            if "periodo" in ramp.columns:
+                grafico = (
+                    ramp.groupby("periodo", as_index=False)[
+                        [
+                            "equipes_planejadas",
+                            "equipes_mobilizadas",
+                        ]
+                    ]
+                    .sum()
+                    .set_index("periodo")
+                )
+
+                st.markdown("### Equipes — planejado x mobilizado")
+
+                st.line_chart(grafico)
+
+# ============================================================
+# 7. MODO REUNIÃO
+# ============================================================
+
+elif pagina == "Modo Reunião":
+    cabecalho(
+        "Modo Reunião",
+        "Visão executiva para acompanhamento com a Aqua Pernambuco.",
+    )
+
+    st.markdown(
+        "<div class='modo-reuniao'>"
+        "Somente informações consolidadas. "
+        "A base nominal de colaboradores não é exibida."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    dias = (GO_LIVE - date.today()).days
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric("Dias para Go-Live", dias)
+    c2.metric("Mobilização geral", f"{totais['percentual']:.1f}%")
+    c3.metric("Atividades concluídas", totais["concluidos"])
+    c4.metric("Pontos aguardando Aqua", totais["aguardando_aqua"])
+
+    st.markdown("## Mobilização das frentes")
+
+    if not df_resumo.empty:
+        for _, row in df_resumo.iterrows():
+            frente = texto(row.get("frente"))
+            total = numero(row.get("total"))
+            concluidos = numero(row.get("concluidos"))
+            cancelados = numero(row.get("cancelados"))
+
+            pct = percentual_mobilizacao(
+                total, concluidos, cancelados
+            )
+
+            st.markdown(f"### {frente}")
+            st.progress(min(max(pct / 100, 0), 1))
+            st.caption(
+                f"{concluidos} de "
+                f"{max(total - cancelados, 0)} atividades concluídas "
+                f"· {pct:.1f}%"
+            )
+
+    esquerda, direita = st.columns(2)
+
+    with esquerda:
+        st.markdown("## Pontos que exigem ação")
+
+        criticos = pontos_criticos(df_atividades, 8)
+
+        if criticos.empty:
+            st.success("Nenhum ponto crítico identificado.")
+        else:
+            for _, row in criticos.iterrows():
+                st.markdown(
+                    f"""
+                    <div class="card">
+                        <div class="card-titulo">
+                            {texto(row.get("atividade"))}
+                        </div>
+                        <div class="card-texto">
+                            <b>{texto(row.get("frente"))}</b>
+                            · {texto(row.get("status"))}<br>
+                            Responsável:
+                            {texto(row.get("responsavel"))}
+                            · Prazo:
+                            {data_br(row.get("data_prevista"))}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    with direita:
+        st.markdown("## Próximos passos")
+
+        if not df_atividades.empty:
+            proximos = df_atividades[
+                ~df_atividades["status"].isin(
+                    ["Concluído", "Cancelado"]
+                )
+            ].copy()
+
+            proximos["proximo"] = proximos.apply(
+                proximo_passo, axis=1
+            )
+
+            proximos = proximos[
+                proximos["proximo"] != "—"
+            ].sort_values(
+                ["ordem_prioridade", "data_prevista_dt"],
+                na_position="last",
+            ).head(8)
+
+            if proximos.empty:
+                st.info("Nenhum próximo passo registrado.")
+            else:
+                for _, row in proximos.iterrows():
+                    st.markdown(
+                        f"""
+                        <div class="card">
+                            <div class="card-titulo">
+                                {texto(row.get("frente"))}
+                                · {texto(row.get("atividade"))}
+                            </div>
+                            <div class="card-texto">
+                                {proximo_passo(row)}<br>
+                                <b>Responsável:</b>
+                                {texto(row.get("responsavel"))}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+    st.markdown("## Pessoas — visão quantitativa")
+
+    total_pessoas = len(df_pessoas)
+
+    def reuniao_flag(campo):
+        if df_pessoas.empty or campo not in df_pessoas.columns:
+            return 0
+
+        return int(
+            pd.to_numeric(
+                df_pessoas[campo], errors="coerce"
+            ).fillna(0).sum()
+        )
+
+    p1, p2, p3, p4 = st.columns(4)
+
+    p1.metric("Cadastrados", total_pessoas)
+    p2.metric(
+        "Documentação enviada",
+        reuniao_flag("documentacao_enviada"),
+    )
+    p3.metric(
+        "Aprovados Aqua",
+        reuniao_flag("aprovado_aqua"),
+    )
+    p4.metric(
+        "Liberados para campo",
+        reuniao_flag("liberado_campo"),
+    )
+
+    st.markdown("## Rampagem")
+
+    if df_rampagem.empty:
+        st.info("Nenhuma rampagem cadastrada.")
+    else:
+        ramp_reuniao = df_rampagem.copy()
+
+        colunas = [
+            "frente",
+            "periodo",
+            "equipes_planejadas",
+            "equipes_mobilizadas",
+            "veiculos_planejados",
+            "veiculos_mobilizados",
+        ]
+
+        colunas = [
+            c for c in colunas if c in ramp_reuniao.columns
+        ]
+
+        ramp_reuniao = ramp_reuniao[colunas].rename(
+            columns={
+                "frente": "Frente",
+                "periodo": "Período",
+                "equipes_planejadas": "Equipes planejadas",
+                "equipes_mobilizadas": "Equipes mobilizadas",
+                "veiculos_planejados": "Veículos planejados",
+                "veiculos_mobilizados": "Veículos mobilizados",
+            }
+        )
+
+        st.dataframe(
+            ramp_reuniao,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+# ============================================================
+# RODAPÉ
+# ============================================================
+
+st.markdown(
+    f"""
+    <div class="rodape">
+        V2 — gestão operacional + cadastros editáveis ·
+        Dados carregados da base estruturada de mobilização ·
+        Go-Live: 26/10/2026
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
